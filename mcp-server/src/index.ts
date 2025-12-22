@@ -9,6 +9,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { SummaryManager } from './summaryManager.js';
 import { CopilotAnalyzer } from './copilotAnalyzer.js';
+import { StalenessChecker } from './stalenessChecker.js';
+import { LRUCache, CacheKeyGenerator } from './lruCache.js';
 
 const server = new Server(
   {
@@ -25,6 +27,10 @@ const server = new Server(
 // Initialize managers
 const summaryManager = new SummaryManager();
 const copilotAnalyzer = new CopilotAnalyzer();
+
+// Initialize caches (100 entries each, auto-LRU)
+const fileSummaryCache = new LRUCache<string, any>(100);
+const searchResultsCache = new LRUCache<string, any>(100);
 
 // Define available tools
 const tools: Tool[] = [
@@ -67,6 +73,20 @@ const tools: Tool[] = [
         },
       },
       required: ['workspace_path', 'file_path'],
+    },
+  },
+  {
+    name: 'list_stale_summaries',
+    description: 'Check which summaries are out-of-date based on git history. Returns files that have been modified since their summaries were generated.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+      },
+      required: ['workspace_path'],
     },
   },
   {
@@ -186,6 +206,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Save to cache
         await summaryManager.saveSummary(workspace_path, file_path, summary);
         
+        // Invalidate related caches
+        const summaryKey = CacheKeyGenerator.fileSummaryKey(workspace_path, file_path);
+        fileSummaryCache.clear(); // Clear all summaries (conservative, ensures freshness)
+        searchResultsCache.clear(); // Clear all searches (dependency graph changed)
+        
         return {
           content: [
             {
@@ -203,11 +228,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           search_type?: string;
         };
         
+        // Check cache first
+        const cacheKey = CacheKeyGenerator.searchKey(workspace_path, query, search_type || 'keyword');
+        const cachedResults = searchResultsCache.get(cacheKey);
+        if (cachedResults) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(cachedResults, null, 2),
+              },
+            ],
+          };
+        }
+        
+        // Perform search
         const results = await summaryManager.searchSummaries(
           workspace_path,
           query,
           search_type || 'keyword'
         );
+        
+        // Cache results
+        searchResultsCache.set(cacheKey, results);
         
         return {
           content: [
@@ -234,12 +277,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case 'list_stale_summaries': {
+        const { workspace_path } = args as { workspace_path: string };
+        
+        const staleFiles = StalenessChecker.getStaleFiles(workspace_path);
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                total_stale: staleFiles.length,
+                stale_files: staleFiles
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
       case 'get_dependency_graph': {
         const { workspace_path, file_path } = args as {
           workspace_path: string;
           file_path?: string;
         };
-        
+
+        // get_dependency_graph doesn't use cache (full graph computation)
         const graph = await summaryManager.getDependencyGraph(workspace_path, file_path);
         
         return {

@@ -22,6 +22,10 @@
         "title": "LUNA: Generate Codebase Summaries"
       },
       {
+        "command": "luna-encyclopedia.updateStale",
+        "title": "LUNA: Update Stale Summaries"
+      },
+      {
         "command": "luna-encyclopedia.showSummary",
         "title": "LUNA: Show Summary Panel"
       }
@@ -108,6 +112,53 @@
           "minimum": 0,
           "maximum": 1,
           "description": "Temperature for LLM generation (0 = deterministic, 1 = creative). Keep at 0 for consistent summaries."
+        },
+        "luna-encyclopedia.fileTypesToInclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "py",
+            "java",
+            "cs",
+            "go",
+            "rs",
+            "cpp",
+            "c",
+            "h",
+            "hpp"
+          ],
+          "markdownDescription": "File extensions to analyze (without the dot). Leave empty to analyze all files matching patterns.",
+          "examples": [
+            ["ts", "tsx", "js", "jsx"],
+            ["py"],
+            ["java", "scala", "kotlin"]
+          ]
+        },
+        "luna-encyclopedia.fileTypesToExclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "d.ts",
+            "test.ts",
+            "spec.ts",
+            "test.js",
+            "spec.js",
+            "min.js",
+            "min.css"
+          ],
+          "markdownDescription": "File patterns to exclude (e.g., 'test.ts' or 'min.js'). Useful for excluding test files and minified code.",
+          "examples": [
+            ["d.ts", "test.ts", "spec.ts"],
+            ["test.py", "mock.py"]
+          ]
         }
       }
     }
@@ -121,14 +172,15 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.54.0",
     "typescript": "^5.3.2"
   },
   "dependencies": {
-    "marked": "^11.0.0"
+    "marked": "^11.0.0",
+    "minimatch": "^9.0.5"
   }
 }

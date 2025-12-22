@@ -2,16 +2,22 @@ import * as vscode from 'vscode';
 import { SummaryTreeProvider } from './summaryTreeProvider';
 import { SummaryPanel } from './summaryPanel';
 import { CodebaseAnalyzer } from './codebaseAnalyzer';
+import { CodeNavigationHandler } from './codeNavigationHandler';
+
+let summaryTreeProvider: SummaryTreeProvider;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('LUNA Codebase Encyclopedia is now active');
 
     // Initialize providers
-    const summaryTreeProvider = new SummaryTreeProvider(context);
+    summaryTreeProvider = new SummaryTreeProvider(context);
     const codebaseAnalyzer = new CodebaseAnalyzer(context);
 
+    // Register URI handler for code navigation
+    const uriHandler = CodeNavigationHandler.register(context);
+
     // Register tree view
-    vscode.window.registerTreeDataProvider('luna-encyclopedia.summaryTree', summaryTreeProvider);
+    const treeView = vscode.window.registerTreeDataProvider('luna-encyclopedia.summaryTree', summaryTreeProvider);
 
     // Register commands
     const generateCommand = vscode.commands.registerCommand('luna-encyclopedia.generateSummaries', async () => {
@@ -30,11 +36,38 @@ export function activate(context: vscode.ExtensionContext) {
         });
     });
 
+    const updateStaleCommand = vscode.commands.registerCommand('luna-encyclopedia.updateStale', async () => {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Updating stale summaries...",
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                await codebaseAnalyzer.updateStaleSummaries(progress, token);
+                summaryTreeProvider.refresh();
+                vscode.window.showInformationMessage('✅ Stale summaries updated!');
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to update summaries: ${error}`);
+            }
+        });
+    });
+
     const showSummaryCommand = vscode.commands.registerCommand('luna-encyclopedia.showSummary', (summaryPath?: string) => {
         SummaryPanel.createOrShow(context.extensionUri, summaryPath);
     });
 
-    context.subscriptions.push(generateCommand, showSummaryCommand);
+    const refreshCommand = vscode.commands.registerCommand('luna-encyclopedia.refreshTree', () => {
+        summaryTreeProvider.refresh();
+    });
+
+    context.subscriptions.push(
+        generateCommand, 
+        updateStaleCommand, 
+        showSummaryCommand, 
+        refreshCommand, 
+        treeView,
+        uriHandler
+    );
 }
 
 export function deactivate() {}
