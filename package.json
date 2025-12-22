@@ -1,0 +1,134 @@
+{
+  "name": "luna-codebase-encyclopedia",
+  "displayName": "LUNA Codebase Encyclopedia",
+  "description": "AI-powered codebase analysis and navigation tool",
+  "version": "0.1.0",
+  "publisher": "luna",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:luna-encyclopedia.generateSummaries",
+    "onCommand:luna-encyclopedia.showSummary"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "luna-encyclopedia.generateSummaries",
+        "title": "LUNA: Generate Codebase Summaries"
+      },
+      {
+        "command": "luna-encyclopedia.showSummary",
+        "title": "LUNA: Show Summary Panel"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "luna-encyclopedia",
+          "title": "LUNA Encyclopedia",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "luna-encyclopedia": [
+        {
+          "id": "luna-encyclopedia.summaryTree",
+          "name": "Code Summaries"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "LUNA Encyclopedia",
+      "properties": {
+        "luna-encyclopedia.copilotModel": {
+          "type": "string",
+          "default": "gpt-4o",
+          "enum": [
+            "gpt-4o",
+            "gpt-4.1",
+            "gpt-5-mini",
+            "raptor-mini",
+            "claude-sonnet-4.5",
+            "claude-sonnet-4",
+            "claude-haiku-4.5",
+            "gemini-3-flash",
+            "gemini-3-pro",
+            "gemini-2.5-pro",
+            "gpt-5",
+            "gpt-5.1",
+            "gpt-5.2",
+            "gpt-5-codex",
+            "gpt-5.1-codex",
+            "gpt-5.1-codex-mini",
+            "gpt-5.1-codex-max",
+            "claude-opus-4.5",
+            "claude-opus-4.1",
+            "grok-code-fast-1"
+          ],
+          "enumDescriptions": [
+            "GPT-4o - FREE, great for summaries (recommended)",
+            "GPT-4.1 - FREE, previous generation",
+            "GPT-5 Mini - FREE, fast and efficient for summaries",
+            "Raptor Mini - FREE, Microsoft's efficient model",
+            "Claude Sonnet 4.5 - PAID (1x), excellent reasoning",
+            "Claude Sonnet 4 - PAID (1x), strong performance",
+            "Claude Haiku 4.5 - PAID (0.33x), fast and cheap",
+            "Gemini 3 Flash - PAID (0.33x), Google's fast model",
+            "Gemini 3 Pro - PAID (1x), Google's capable model",
+            "Gemini 2.5 Pro - PAID (1x), Google's advanced model",
+            "GPT-5 - PAID (1x), OpenAI's latest",
+            "GPT-5.1 - PAID (1x), enhanced GPT-5",
+            "GPT-5.2 - PAID (1x), newest GPT version",
+            "GPT-5 Codex - PAID (1x), code-specialized",
+            "GPT-5.1 Codex - PAID (1x), enhanced code model",
+            "GPT-5.1 Codex Mini - PAID (0.33x), efficient code model",
+            "GPT-5.1 Codex Max - PAID (1x), maximum capability code model",
+            "Claude Opus 4.5 - PAID (3x), most capable Claude",
+            "Claude Opus 4.1 - PAID (10x), very expensive but powerful",
+            "Grok Code Fast 1 - PAID (0.25x), X.AI's fast code model"
+          ],
+          "markdownDescription": "Which Copilot model to use for generating code summaries.\n\n**FREE models** (good choices):\n- `gpt-4o` - Recommended for quality\n- `gpt-5-mini` - Recommended for speed\n- `raptor-mini` - Microsoft's efficient option\n\n**PAID models** require Copilot subscription and consume multiplier credits."
+        },
+        "luna-encyclopedia.maxTokens": {
+          "type": "number",
+          "default": 4096,
+          "minimum": 1024,
+          "maximum": 16000,
+          "description": "Maximum tokens for summary generation (higher = more detailed but slower/costlier)"
+        },
+        "luna-encyclopedia.temperature": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Temperature for LLM generation (0 = deterministic, 1 = creative). Keep at 0 for consistent summaries."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.x",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "marked": "^11.0.0"
+  }
+}
