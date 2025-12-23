@@ -20,6 +20,20 @@ export function activate(context: vscode.ExtensionContext) {
     const treeView = vscode.window.registerTreeDataProvider('luna-encyclopedia.summaryTree', summaryTreeProvider);
 
     // Register commands
+    const initCommand = vscode.commands.registerCommand('luna-encyclopedia.initialize', async () => {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Initializing LUNA...",
+            cancellable: false
+        }, async (progress, token) => {
+            try {
+                await codebaseAnalyzer.initializeWorkspace(progress, token);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to initialize LUNA: ${error}`);
+            }
+        });
+    });
+
     const generateCommand = vscode.commands.registerCommand('luna-encyclopedia.generateSummaries', async () => {
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -61,6 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(
+        initCommand,
         generateCommand, 
         updateStaleCommand, 
         showSummaryCommand, 

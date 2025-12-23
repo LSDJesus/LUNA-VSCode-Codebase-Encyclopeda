@@ -111,6 +111,13 @@ export class DependencyLinker {
         // Remove file extension from dependency if present
         const depWithoutExt = depPath.replace(/\.(ts|js|tsx|jsx|py|java|cs|go|rs|cpp|c|h|hpp)$/, '');
         
+        // Handle Python module paths (e.g., "core.services.chat" → "core/services/chat")
+        if (depPath.includes('.') && !depPath.startsWith('.') && !depPath.includes('/')) {
+            // This looks like a Python module path
+            const pythonPath = depWithoutExt.replace(/\./g, '/');
+            return pythonPath;
+        }
+        
         // If it's a relative import (starts with ./ or ../)
         if (depPath.startsWith('.')) {
             const sourceDir = path.dirname(sourceFile);

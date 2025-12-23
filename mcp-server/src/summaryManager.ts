@@ -1,9 +1,11 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { execSync } from 'child_process';
 
 interface FileSummary {
   sourceFile: string;
   generatedAt: string;
+  gitBranch?: string | null;
   summary: {
     purpose: string;
     keyComponents: Array<{ name: string; description: string }>;
@@ -18,15 +20,70 @@ interface FileSummary {
   markdown: string;
 }
 
+interface SummaryPaths {
+  json: string;
+  md: string;
+  fallbackJson?: string;
+  fallbackMd?: string;
+}
+
 export class SummaryManager {
+  /**
+   * Get current git branch, returns null if not in a git repo
+   */
+  private getCurrentBranch(workspacePath: string): string | null {
+    try {
+      const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: workspacePath,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'ignore']
+      }).trim();
+      return branch || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Sanitize branch name for filenames
+   */
+  private sanitizeBranchName(branch: string): string {
+    return branch
+      .replace(/[^a-zA-Z0-9-_]/g, '_')
+      .replace(/_{2,}/g, '_')
+      .toLowerCase();
+  }
+
+  /**
+   * Check if branch is a main branch
+   */
+  private isMainBranch(branch: string | null): boolean {
+    if (!branch) {return true;}
+    const mainBranches = ['main', 'master', 'develop', 'dev'];
+    return mainBranches.includes(branch.toLowerCase());
+  }
+
   private getDocsPath(workspacePath: string): string {
     return path.join(workspacePath, '.codebase');
   }
 
-  private getSummaryPaths(workspacePath: string, filePath: string) {
+  private getSummaryPaths(workspacePath: string, filePath: string): SummaryPaths {
     const docsPath = this.getDocsPath(workspacePath);
     const basePath = path.join(docsPath, filePath);
     const basePathWithoutExt = basePath.replace(/\.[^.]+$/, '');
+    
+    // Try branch-specific file first, then fall back to main
+    const branch = this.getCurrentBranch(workspacePath);
+    
+    if (branch && !this.isMainBranch(branch)) {
+      const sanitized = this.sanitizeBranchName(branch);
+      return {
+        json: `${basePathWithoutExt}.${sanitized}.json`,
+        md: `${basePathWithoutExt}.${sanitized}.md`,
+        fallbackJson: `${basePathWithoutExt}.json`,
+        fallbackMd: `${basePathWithoutExt}.md`,
+      };
+    }
     
     return {
       json: basePathWithoutExt + '.json',
@@ -35,12 +92,13 @@ export class SummaryManager {
   }
 
   async getSummary(workspacePath: string, filePath: string): Promise<FileSummary | null> {
-    const { json, md } = this.getSummaryPaths(workspacePath, filePath);
+    const paths = this.getSummaryPaths(workspacePath, filePath);
     
+    // Try branch-specific files first
     try {
       const [jsonContent, mdContent] = await Promise.all([
-        fs.readFile(json, 'utf-8'),
-        fs.readFile(md, 'utf-8'),
+        fs.readFile(paths.json, 'utf-8'),
+        fs.readFile(paths.md, 'utf-8'),
       ]);
       
       const parsed = JSON.parse(jsonContent);
@@ -49,6 +107,23 @@ export class SummaryManager {
         markdown: mdContent,
       };
     } catch {
+      // Fall back to main branch files if branch-specific don't exist
+      if (paths.fallbackJson && paths.fallbackMd) {
+        try {
+          const [jsonContent, mdContent] = await Promise.all([
+            fs.readFile(paths.fallbackJson, 'utf-8'),
+            fs.readFile(paths.fallbackMd, 'utf-8'),
+          ]);
+          
+          const parsed = JSON.parse(jsonContent);
+          return {
+            ...parsed,
+            markdown: mdContent,
+          };
+        } catch {
+          return null;
+        }
+      }
       return null;
     }
   }

@@ -18,16 +18,24 @@
   "contributes": {
     "commands": [
       {
+        "command": "luna-encyclopedia.initialize",
+        "title": "LUNA: Initialize Workspace",
+        "icon": "$(gear)"
+      },
+      {
         "command": "luna-encyclopedia.generateSummaries",
-        "title": "LUNA: Generate Codebase Summaries"
+        "title": "LUNA: Generate Codebase Summaries",
+        "icon": "$(sync)"
       },
       {
         "command": "luna-encyclopedia.updateStale",
-        "title": "LUNA: Update Stale Summaries"
+        "title": "LUNA: Update Stale Summaries",
+        "icon": "$(refresh)"
       },
       {
         "command": "luna-encyclopedia.showSummary",
-        "title": "LUNA: Show Summary Panel"
+        "title": "LUNA: Show Summary Panel",
+        "icon": "$(file)"
       }
     ],
     "viewsContainers": {
@@ -159,6 +167,20 @@
             ["d.ts", "test.ts", "spec.ts"],
             ["test.py", "mock.py"]
           ]
+        },
+        "luna-encyclopedia.concurrentWorkers": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Number of parallel workers for analyzing files (1-20). Higher = faster but uses more API calls concurrently.",
+          "markdownDescription": "Number of parallel workers for analyzing files.\n\n- **1-3**: Conservative (slower, careful with API limits)\n- **5**: Default (balanced, recommended)\n- **10+**: Aggressive (faster, requires good connection)\n\nDefault: **5**"
+        },
+        "luna-encyclopedia.branchAwareSummaries": {
+          "type": "boolean",
+          "default": false,
+          "description": "Create separate summaries for each git branch (disabled by default)",
+          "markdownDescription": "**Branch-Aware Summaries** (Advanced)\n\nWhen enabled:\n- Each git branch gets its own summaries (e.g., `file.feature-xyz.json`)\n- Queries return summaries matching current branch\n- Falls back to main branch if branch-specific summary missing\n\n**Use cases**:\n- Feature branches with significant code changes\n- Multiple developers working on different branches\n- Need accurate summaries per branch\n\n**Default: Disabled** (single set of summaries for all branches)"
         }
       }
     }
