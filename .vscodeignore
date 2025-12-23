@@ -1,6 +1,9 @@
 .vscode/**
 .vscode-test/**
 src/**
+mcp-server/src/**
+mcp-server/node_modules/**
+mcp-server/tsconfig.json
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md
@@ -8,3 +11,10 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
+!mcp-server/dist/**/*.js
+!resources/templates/**
+.git/**
+*.vsix
+.github/**
+docs/**
+SETUP.md

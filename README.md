@@ -16,7 +16,7 @@
 ### The Agent-First Workflow
 
 ```
-1. Generate summaries once (uses Copilot Chat API, cheap models)
+1. Generate summaries once (free models: gpt-4o, gpt-4.1, gpt-5-mini)
    ↓
 2. Summaries include precise line numbers for every component
    ↓
@@ -41,6 +41,21 @@
 - ❌ A UML diagram tool
 - ❌ A replacement for reading critical code
 - ❌ A UI-first tool (it's API-first)
+
+### Cost Model
+
+**Zero Premium Requests** (Recommended):
+- Use default models: `gpt-4o`, `gpt-4.1`, or `gpt-5-mini`
+- Available to all GitHub Copilot subscribers (Individual, Business, Enterprise)
+- **No premium request costs** - these are standard Copilot models
+- Summaries don't need advanced reasoning - basic models work great
+
+**Premium Models** (Optional):
+- Claude Sonnet, Gemini Pro, GPT-5 variants available if needed
+- Consumes premium request quota if selected
+- Generally unnecessary for code summarization
+
+💡 **Stick with the defaults** - LUNA is optimized to produce high-quality summaries using standard models.
 
 ### The Workflow
 
@@ -121,6 +136,7 @@ Save and close when done. *(You can always edit this later.)*
    - "Which files import summaryPanel?"
    - "Show me the architecture"
 4. Copilot uses MCP tools → instant responses with line numbers
+   - **MCP server auto-registers on first use** - no manual configuration needed!
 
 ### Step 5: Keep Summaries Fresh
 
@@ -133,6 +149,17 @@ After each coding session:
 
 ## Install & Build
 
+### For Users (Installing the Extension)
+
+1. Install the LUNA extension from the VS Code Marketplace (or install the `.vsix` file)
+2. Reload VS Code
+3. The MCP server will auto-register on first activation
+4. You'll see a notification: "✅ LUNA MCP Server registered!"
+
+**That's it!** No manual configuration needed.
+
+### For Developers (Contributing to LUNA)
+
 ```bash
 # Install extension dependencies
 npm install
@@ -144,6 +171,8 @@ cd ..
 
 # Compile extension
 npm run compile
+
+# Press F5 to launch Extension Development Host
 ```
 
 ---
@@ -220,7 +249,7 @@ You should see:
 ### MCP Server
 Provides 6 tools for Copilot Agent Mode:
 - `get_file_summary` - Instant cached lookup with line numbers
-- `analyze_file` - Generate/update summary (cheap model)
+- `analyze_file` - Generate/update summary (uses default models)
 - `search_summaries` - Find by dependency/component/keyword
 - `list_summaries` - List all cached files
 - `list_stale_summaries` - Find outdated summaries (git-aware)
@@ -229,7 +258,7 @@ Provides 6 tools for Copilot Agent Mode:
 ### Configuration
 - **`.codebase/.lunasummarize`** - Include/exclude patterns
 - **VS Code Settings** - Model selection, file types, token limits
-- **`.vscode/mcp.json`** - MCP server registration (auto-configured)
+- **MCP Server** - Auto-registered on extension activation (zero-config)
 
 ## Configuration
 
@@ -563,7 +592,7 @@ LUNA's MCP server includes an **LRU (Least Recently Used) cache** for lightning-
 ### Real-World Example
 
 Analyzing a 1000-file project:
-- **Generation**: 60 minutes (one-time, cheap Copilot API)
+- **Generation**: 60 minutes (one-time, uses default models)
 - **Agent queries in one session**: 70-80% cache hit rate
 - **Result**: Agent gets instant responses for all repeated architecture questions
 
@@ -665,11 +694,11 @@ packages/utils/src
 - Maintaining codebase context requires constant regeneration
 
 **With LUNA**:
-- Generate summaries once (cheap Copilot Chat model)
+- Generate summaries once (default models: gpt-4o, gpt-4.1, gpt-5-mini)
 - Query thousands of times (zero token cost after generation)
 - Instant architecture understanding
 - AI stays focused on actual development work
-- **Update only changed files** - minimal cost for maintenance
+- **Update only changed files** - minimal maintenance
 - Git-aware staleness detection prevents manual tracking
 
 **Real-world example**:
@@ -775,8 +804,9 @@ Ctrl+Shift+P → "LUNA: Generate Codebase Summaries"
 - [ ] Semantic code search (beyond keyword matching)
 
 **Note**: Visual diagrams and wikis are intentionally out of scope. LUNA focuses on providing **structured, queryable data** for AI agents. Use tools like Mermaid, PlantUML, or Obsidian for visualization.
+
 **With LUNA**:
-- Generate summaries once (cheap Copilot Chat model)
+- Generate summaries once (default models: gpt-4o, gpt-4.1, gpt-5-mini)
 - Query thousands of times (zero token cost after generation)
 - Instant architecture understanding
 - AI stays focused on actual development work

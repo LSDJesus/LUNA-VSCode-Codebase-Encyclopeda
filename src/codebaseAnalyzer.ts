@@ -148,24 +148,24 @@ export class CodebaseAnalyzer {
         const lunaSummarizePath = path.join(codebasePath, '.lunasummarize');
         if (!fs.existsSync(lunaSummarizePath)) {
             progress.report({ message: 'Creating .lunasummarize config...' });
-            const defaultConfig = this.createDefaultLunaSummarizeConfig();
-            fs.writeFileSync(lunaSummarizePath, defaultConfig, 'utf-8');
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', '.lunasummarize');
+            fs.copyFileSync(templatePath, lunaSummarizePath);
         }
 
         // Create instructions if they don't exist
         const instructionsPath = path.join(codebasePath, 'LUNA_INSTRUCTIONS.md');
         if (!fs.existsSync(instructionsPath)) {
             progress.report({ message: 'Creating LUNA_INSTRUCTIONS.md...' });
-            const instructions = this.createLunaInstructions();
-            fs.writeFileSync(instructionsPath, instructions, 'utf-8');
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'LUNA_INSTRUCTIONS.md');
+            fs.copyFileSync(templatePath, instructionsPath);
         }
 
         // Create README for .codebase directory
         const readmePath = path.join(codebasePath, 'README.md');
         if (!fs.existsSync(readmePath)) {
             progress.report({ message: 'Creating .codebase/README.md...' });
-            const readme = this.createCodebaseReadme();
-            fs.writeFileSync(readmePath, readme, 'utf-8');
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'README.md');
+            fs.copyFileSync(templatePath, readmePath);
         }
 
         progress.report({ message: 'Initialization complete!' });
@@ -235,14 +235,14 @@ export class CodebaseAnalyzer {
         // Ensure config and instructions exist (in case user skipped init)
         const lunaSummarizePath = path.join(codebasePath, '.lunasummarize');
         if (!fs.existsSync(lunaSummarizePath)) {
-            const defaultConfig = this.createDefaultLunaSummarizeConfig();
-            fs.writeFileSync(lunaSummarizePath, defaultConfig, 'utf-8');
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', '.lunasummarize');
+            fs.copyFileSync(templatePath, lunaSummarizePath);
         }
 
         const instructionsPath = path.join(codebasePath, 'LUNA_INSTRUCTIONS.md');
         if (!fs.existsSync(instructionsPath)) {
-            const instructions = this.createLunaInstructions();
-            fs.writeFileSync(instructionsPath, instructions, 'utf-8');
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'LUNA_INSTRUCTIONS.md');
+            fs.copyFileSync(templatePath, instructionsPath);
         }
         
         // Generate bootstrap guide
@@ -476,7 +476,13 @@ ${languageHints}
     "external": []
   },
   "publicAPI": [
-    {"signature": "export function doThing()", "description": "Description", "lines": "100-120"}
+    {
+      "signature": "export function doThing(param: string): Promise<Result>",
+      "description": "Description of what it does",
+      "inputTypes": {"param": "string"},
+      "returnType": "Promise<Result>",
+      "lines": "100-120"
+    }
   ],
   "codeLinks": [
     {"symbol": "main_function", "path": "${relPath}", "lines": "100-120"}
@@ -485,7 +491,7 @@ ${languageHints}
 }
 \`\`\`
 
-2. Then, output Markdown with navigation links:
+2. Then, output Markdown with proper working links:
 \`\`\`markdown
 # ${path.basename(relPath, path.extname(relPath))}
 
@@ -493,14 +499,17 @@ ${languageHints}
 One concise paragraph.
 
 ## Key Components
-- [\`ComponentName\`](vscode://file/${relPath}?line=10) (lines 10-45): Description
-- [\`functionName()\`](vscode://file/${relPath}?line=50) (line 50): Description
+- [\`ComponentName\`](${relPath.replace(/\\\\/g, '/')}#L10) (lines 10-45): Description
+- [\`functionName()\`](${relPath.replace(/\\\\/g, '/')}#L50) (line 50): Description
 
 ## Public API
-- [\`export function doThing()\`](vscode://file/${relPath}?line=100) (lines 100-120): Description
+- [\`doThing(param: string): Promise<Result>\`](${relPath.replace(/\\\\/g, '/')}#L100) (lines 100-120)
+  - **Input**: \`param: string\`
+  - **Output**: \`Promise<Result>\`
+  - **Description**: What the function does
 
 ## Code Links
-- [main_function](code:${relPath}#symbol=main_function)
+- [main_function](${relPath.replace(/\\\\/g, '/')}#symbol=main_function)
 
 ## Implementation Notes
 Important details.
@@ -716,176 +725,4 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
 
         fs.writeFileSync(indexPath, indexContent, 'utf-8');
     }
-
-    private createDefaultLunaSummarizeConfig(): string {
-        return `# LUNA Summarize Configuration
-# Auto-generated during first summary generation
-# Customize this file to control what files LUNA analyzes
-
-# File extensions to INCLUDE (whitespace-separated)
-includeExtensions: ts tsx js jsx py java cs go rs cpp c h hpp
-
-# Directories to EXCLUDE (glob patterns)
-excludePatterns:
-  - node_modules/**
-  - .git/**
-  - dist/**
-  - build/**
-  - out/**
-  - .venv/**
-  - venv/**
-  - __pycache__/**
-  - .next/**
-  - .nuxt/**
-
-# Individual files to EXCLUDE (glob patterns)
-excludeFiles:
-  - **/*.test.ts
-  - **/*.test.js
-  - **/*.spec.ts
-  - **/*.spec.js
-  - **/*.min.js
-  - **/*.min.css
-  - **/*.d.ts
-  - **/node_modules/**
-
-# Maximum file size to analyze (in KB)
-maxFileSize: 500
-
-# Enable verbose logging
-verbose: false
-`;
-    }
-
-    private createCodebaseReadme(): string {
-        return `# .codebase Directory
-
-This directory contains LUNA-generated summaries and configuration for your project.
-
-## Files
-
-- **LUNA_INSTRUCTIONS.md** - Complete guide for using LUNA
-- **.lunasummarize** - Configuration file (customize this before generating!)
-- **LUNA_GUIDE.md** - Auto-generated guide specific to your project
-- **INDEX.md** - Navigation index for all summaries
-- **src/file.md** - Human-readable summary for each source file
-- **src/file.json** - Machine-readable summary for each source file
-- **src/INDEX.md** - Directory indexes
-
-## Quick Start
-
-1. Review and customize **.lunasummarize** to control what files are analyzed
-2. Run "LUNA: Generate Codebase Summaries" to populate this directory
-3. Open Copilot Chat in Agent Mode and ask about your code
-4. Run "LUNA: Update Stale Summaries" after making changes
-
-## How to Use
-
-See LUNA_INSTRUCTIONS.md for complete documentation.
-
-## What Not to Edit
-
-- **.lunasummarize** - You can edit this before generation
-- **LUNA_GUIDE.md** - Auto-generated, will be overwritten
-- All .md and .json files - Auto-generated, will be overwritten on updates
-
-The only file you should customize is **.lunasummarize** before running summaries!
-`;
-    }
-
-    private createLunaInstructions(): string {
-        return `# LUNA Codebase Encyclopedia - Instructions
-
-## What is LUNA?
-
-LUNA is an **Agent-First Context API** that generates structured summaries of your codebase for AI agents (like Copilot Agent Mode) to query instantly without burning tokens.
-
-## How to Use
-
-### 1. Generate Summaries
-- Command: **"LUNA: Generate Codebase Summaries"**
-- Analyzes all files matching your include/exclude criteria
-- Creates summaries in this directory (.codebase/)
-- One-time cost: ~$0.50 per 1000 files
-
-### 2. Update Stale Summaries
-- Command: **"LUNA: Update Stale Summaries"**
-- Only regenerates files that have changed (git-aware)
-- Use after each coding session
-- Daily cost: ~$0.01-0.05
-
-### 3. Query with Copilot Agent Mode
-- Open Copilot Chat (Cmd+I)
-- Toggle **Agent Mode** (top right)
-- Ask naturally:
-  - "What does extension.ts do?"
-  - "Which files import summaryPanel?"
-  - "Show me the architecture"
-  - "Are any summaries out of date?"
-
-### 4. Navigate to Code
-- Agent references exact line numbers (e.g., "lines 10-25")
-- Click links in responses → editor jumps to that location
-- Bidirectional dependencies: "used by" shows reverse imports
-
-## Configuration
-
-Edit **.lunasummarize** in this directory to customize:
-- Which file types to include (extensions)
-- Which directories/files to exclude
-- Maximum file size to analyze
-- Verbosity
-
-## File Structure
-
-- **LUNA_GUIDE.md** - Auto-generated usage guide for this project
-- **LUNA_INSTRUCTIONS.md** - This file
-- **.lunasummarize** - Configuration file (customize this!)
-- **src/file.md** - Human-readable summary (Markdown)
-- **src/file.json** - Machine-readable summary (JSON)
-- **src/INDEX.md** - Directory index with file listings
-- **INDEX.md** - Root index for navigation
-
-## MCP Tools Available
-
-Via Copilot Agent Mode:
-- \`get_file_summary\` - Instant cached lookup
-- \`search_summaries\` - Find by dependency/component
-- \`list_summaries\` - List all cached files
-- \`list_stale_summaries\` - Find outdated summaries
-- \`get_dependency_graph\` - Show relationships
-- \`analyze_file\` - Generate summary for new file
-
-## Performance Tips
-
-- **Cache**: Repeated queries are cached (sub-10ms responses)
-- **Incremental updates**: Only changed files regenerated
-- **Line numbers**: All components include exact line ranges
-- **Bidirectional deps**: "who uses X?" returns complete list
-
-## Troubleshooting
-
-**Summaries aren't generating?**
-- Ensure GitHub Copilot extension is installed and active
-- Check that .lunasummarize isn't excluding all files
-
-**Updates are slow?**
-- First update of large repos takes longer
-- Subsequent updates are much faster (only changed files)
-
-**Copilot isn't using MCP tools?**
-- Switch to Agent Mode (toggle in chat header)
-- Ask a question that requires code context
-- Agent automatically uses appropriate tools
-
-## Philosophy
-
-LUNA is **not** a visual wiki or diagram tool. It's a structured knowledge API for agents. For visualization, use specialized tools like Mermaid or PlantUML.
-
----
-
-Generated by LUNA Codebase Encyclopedia - ${new Date().toISOString().split('T')[0]}
-`;
-    }
 }
-
