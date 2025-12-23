@@ -17,10 +17,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:luna-encyclopedia.generateSummaries",
-    "onCommand:luna-encyclopedia.showSummary"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -58,7 +55,8 @@
       "luna-encyclopedia": [
         {
           "id": "luna-encyclopedia.summaryTree",
-          "name": "Code Summaries"
+          "name": "Code Summaries",
+          "icon": "resources/icon.svg"
         }
       ]
     },
