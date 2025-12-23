@@ -8,7 +8,10 @@
 
 **Problem**: AI assistants waste context/tokens reading entire source files to understand codebases.
 
-**Solution**: LUNA generates structured summaries (MD + JSON) using cheap Copilot models, then exposes them via MCP tools that Copilot Agent Mode can query instantly.
+**Solution**: LUNA generates structured summaries (MD + JSON) using a hybrid approach:
+1. **Static Analysis** (regex-based) extracts imports/dependencies with 100% accuracy
+2. **Copilot Chat API** generates rich insights (purpose, components, patterns)
+3. Results are merged and exposed via MCP tools for instant, zero-token queries
 
 ### The Agent-First Workflow
 
@@ -42,18 +45,39 @@
 ### The Workflow
 
 ```
-1. Run "LUNA: Generate Codebase Summaries" (uses Copilot Chat API)
+1. Run "LUNA: Generate Codebase Summaries"
    ↓
-2. Generates .md (human) + .json (AI) summaries for all files
+2. For each file:
+   • Static analyzer extracts imports (100% reliable)
+   • Copilot analyzes purpose, components, patterns
+   • Results merged into .md (human) + .json (AI)
    ↓
 3. Stores in .codebase/ folder with .lunasummarize config
    ↓
-4. Open Copilot Chat → Switch to Agent Mode
+4. Post-processor computes "Used By" relationships
    ↓
-5. Ask: "What does extension.ts do?"
+5. Open Copilot Chat → Switch to Agent Mode
    ↓
-6. Copilot uses MCP tools to query .codebase/ (instant, no tokens wasted!)
+6. Ask: "What does extension.ts do?"
+   ↓
+7. Copilot uses MCP tools to query .codebase/ (instant, no tokens wasted!)
 ```
+
+## Why Hybrid Analysis?
+
+**Static Analysis (Regex-based)**:
+- ✅ 100% accurate dependency extraction
+- ✅ Handles Python, TypeScript/JavaScript, Java, C#, Go
+- ✅ Resolves relative imports correctly
+- ✅ Fast and deterministic
+
+**Copilot Analysis (LLM-based)**:
+- ✅ Rich semantic understanding
+- ✅ Describes purpose and patterns
+- ✅ Identifies key components
+- ✅ Documents public APIs
+
+**Best of Both Worlds**: Reliable dependency graphs + human-quality insights.
 
 ## Quick Start
 

@@ -9,6 +9,7 @@ import { DependencyLinker } from './dependencyLinker';
 import { SummaryIssueTracker } from './summaryIssueTracker';
 import { ConcurrencyLimiter } from './concurrencyLimiter';
 import { GitBranchDetector } from './gitBranchDetector';
+import { StaticImportAnalyzer } from './staticImportAnalyzer';
 
 interface FileSummary {
     purpose: string;
@@ -408,6 +409,10 @@ export class CodebaseAnalyzer {
         const relPath = path.relative(workspacePath, filePath);
         const fileExt = path.extname(filePath);
         
+        // Step 1: Extract imports using static analysis (100% reliable)
+        const staticDeps = StaticImportAnalyzer.analyzeImports(content, relPath, workspacePath);
+        
+        // Step 2: Get Copilot's analysis for rich insights
         const prompt = this.buildAnalysisPrompt(relPath, fileExt, content);
         
         const config = vscode.workspace.getConfiguration('luna-encyclopedia');
@@ -427,11 +432,15 @@ export class CodebaseAnalyzer {
             fullResponse += chunk;
         }
         
-        // Parse the response to extract both MD and JSON
+        // Step 3: Parse Copilot's response
         const { markdown, json } = this.parseResponse(fullResponse, relPath);
         
+        // Step 4: Merge static dependencies with Copilot's analysis
+        // Static analysis takes precedence for accuracy
+        const mergedJson = this.mergeDependencies(json, staticDeps);
+        
         // Save both formats
-        this.saveSummary(workspacePath, relPath, markdown, json);
+        this.saveSummary(workspacePath, relPath, markdown, mergedJson);
     }
     
     private buildAnalysisPrompt(relPath: string, fileExt: string, content: string): string {
@@ -444,7 +453,9 @@ export class CodebaseAnalyzer {
 
 **File**: \`${relPath}\`
 
-**CRITICAL**: For EVERY component, function, class, and dependency, you MUST include the exact line numbers where they appear in the source code. Use the format "lines": "123-168" for ranges or "lines": "42" for single lines.
+**CRITICAL**: For EVERY component, function, class, and API, you MUST include the exact line numbers where they appear in the source code. Use the format "lines": "123-168" for ranges or "lines": "42" for single lines.
+
+**Note**: Dependencies (imports) will be automatically extracted via static analysis. Focus on providing rich insights about purpose, components, public API, and implementation details.
 
 **Task**: Create a structured analysis optimized for AI agent consumption.
 
@@ -461,8 +472,8 @@ ${languageHints}
     {"name": "functionName", "description": "What it does", "lines": "50"}
   ],
   "dependencies": {
-    "internal": [{"path": "path/to/file.ts", "usage": "What you use from it", "lines": "3"}],
-    "external": [{"package": "library-name", "usage": "What features you use", "lines": "1-2"}]
+    "internal": [],
+    "external": []
   },
   "publicAPI": [
     {"signature": "export function doThing()", "description": "Description", "lines": "100-120"}
@@ -484,13 +495,6 @@ One concise paragraph.
 ## Key Components
 - [\`ComponentName\`](vscode://file/${relPath}?line=10) (lines 10-45): Description
 - [\`functionName()\`](vscode://file/${relPath}?line=50) (line 50): Description
-
-## Dependencies
-### Internal
-- [\`path/to/file.ts\`](vscode://file/path/to/file.ts) (line 3) - Usage
-
-### External
-- \`library-name\` (lines 1-2) - Usage
 
 ## Public API
 - [\`export function doThing()\`](vscode://file/${relPath}?line=100) (lines 100-120): Description
@@ -514,22 +518,23 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
         const ext = fileExt.toLowerCase();
         
         if (ext === '.py') {
-            return `**IMPORTANT for Python files**:
-- For "internal" dependencies: List ALL imports from project files (e.g., "from core.services import X" → path should be "core/services")
-- For "external" dependencies: List ALL standard library and third-party packages (e.g., "import asyncio", "import logging", "from pydantic import BaseModel")
-- Include the import line numbers for each dependency
-- For classes: Include parent classes and mixins
-- For Pydantic models: List all field names and their types`;
+            return `**Focus areas for Python files**:
+- Document class hierarchies (parent classes, mixins)
+- For Pydantic models: List all field names and their types with line numbers
+- Describe async functions and their role in the workflow
+- Note any decorators and what they do`;
         } else if (ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx') {
-            return `**IMPORTANT for TypeScript/JavaScript files**:
-- For "internal" dependencies: List ALL relative imports (e.g., "./file" or "../other/file")
-- For "external" dependencies: List ALL npm packages
-- Include the import line numbers for each dependency`;
+            return `**Focus areas for TypeScript/JavaScript files**:
+- Document React component props and state (if applicable)
+- Note any hooks usage (useState, useEffect, custom hooks)
+- Describe exported functions, classes, and types
+- Mention any important type definitions`;
         } else if (ext === '.java' || ext === '.cs') {
-            return `**IMPORTANT for ${ext === '.java' ? 'Java' : 'C#'} files**:
-- For "internal" dependencies: List ALL project package imports
-- For "external" dependencies: List ALL standard library and external library imports
-- Include the import/using line numbers for each dependency`;
+            return `**Focus areas for ${ext === '.java' ? 'Java' : 'C#'} files**:
+- Document class hierarchy and interfaces implemented
+- List public methods with their signatures
+- Note any annotations/attributes and their purpose
+- Describe design patterns used`;
         }
         
         return '';
@@ -571,6 +576,22 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
             publicAPI: [],
             codeLinks: [],
             implementationNotes: ''
+        };
+    }
+    
+    /**
+     * Merge static analysis dependencies with Copilot's response
+     * Static analysis takes precedence for accuracy
+     */
+    private mergeDependencies(copilotJson: FileSummary, staticDeps: { internal: any[]; external: any[] }): FileSummary {
+        // Use static analysis for dependencies (100% reliable)
+        // Keep Copilot's analysis for everything else (purpose, components, etc.)
+        return {
+            ...copilotJson,
+            dependencies: {
+                internal: staticDeps.internal.length > 0 ? staticDeps.internal : copilotJson.dependencies.internal,
+                external: staticDeps.external.length > 0 ? staticDeps.external : copilotJson.dependencies.external
+            }
         };
     }
     

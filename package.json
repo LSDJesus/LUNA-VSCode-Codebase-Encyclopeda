@@ -4,6 +4,13 @@
   "description": "AI-powered codebase analysis and navigation tool",
   "version": "0.1.0",
   "publisher": "luna",
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/LUNA-VSCode-Codebase-Encyclopeda"
+  },
+  "homepage": "https://github.com/yourusername/LUNA-VSCode-Codebase-Encyclopeda#readme",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
