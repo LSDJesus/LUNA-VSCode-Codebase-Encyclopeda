@@ -149,6 +149,9 @@ export class CodebaseAnalyzer {
         if (!fs.existsSync(lunaSummarizePath)) {
             progress.report({ message: 'Creating .lunasummarize config...' });
             const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', '.lunasummarize');
+            if (!fs.existsSync(templatePath)) {
+                throw new Error(`Template not found: ${templatePath}`);
+            }
             fs.copyFileSync(templatePath, lunaSummarizePath);
         }
 
@@ -157,6 +160,9 @@ export class CodebaseAnalyzer {
         if (!fs.existsSync(instructionsPath)) {
             progress.report({ message: 'Creating LUNA_INSTRUCTIONS.md...' });
             const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'LUNA_INSTRUCTIONS.md');
+            if (!fs.existsSync(templatePath)) {
+                throw new Error(`Template not found: ${templatePath}`);
+            }
             fs.copyFileSync(templatePath, instructionsPath);
         }
 
@@ -165,17 +171,25 @@ export class CodebaseAnalyzer {
         if (!fs.existsSync(readmePath)) {
             progress.report({ message: 'Creating .codebase/README.md...' });
             const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'README.md');
+            if (!fs.existsSync(templatePath)) {
+                throw new Error(`Template not found: ${templatePath}`);
+            }
             fs.copyFileSync(templatePath, readmePath);
         }
 
         progress.report({ message: 'Initialization complete!' });
         
-        // Open .lunasummarize for user to edit
-        const doc = await vscode.workspace.openTextDocument(lunaSummarizePath);
-        await vscode.window.showTextDocument(doc);
+        // Open Quick Start guide from extension resources (don't copy to workspace)
+        const quickStartPath = path.join(this.context.extensionPath, 'resources', 'templates', 'QUICK_START.md');
+        const quickStartDoc = await vscode.workspace.openTextDocument(quickStartPath);
+        await vscode.window.showTextDocument(quickStartDoc, { preview: false, viewColumn: vscode.ViewColumn.One });
+        
+        // Open .lunasummarize for editing in split view
+        const configDoc = await vscode.workspace.openTextDocument(lunaSummarizePath);
+        await vscode.window.showTextDocument(configDoc, { preview: false, viewColumn: vscode.ViewColumn.Two });
         
         vscode.window.showInformationMessage(
-            '✅ LUNA initialized! Review .lunasummarize to customize what files are analyzed, then run "LUNA: Generate Codebase Summaries"'
+            '✅ LUNA initialized! Follow the Quick Start guide to configure and generate summaries.'
         );
     }
 

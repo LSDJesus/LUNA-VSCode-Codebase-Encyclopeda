@@ -1,9 +1,9 @@
 {
   "name": "luna-codebase-encyclopedia",
   "displayName": "LUNA Codebase Encyclopedia",
-  "description": "AI-powered codebase analysis and navigation tool",
-  "version": "0.1.0",
-  "publisher": "luna",
+  "description": "Agent-First Context API: Generate structured summaries of your codebase for instant, zero-token queries via Copilot Agent Mode",
+  "version": "1.0.0",
+  "publisher": "ai-evolution",
   "icon": "resources/icon.png",
   "repository": {
     "type": "git",
@@ -15,7 +15,19 @@
     "vscode": "^1.85.0"
   },
   "categories": [
+    "AI",
+    "Programming Languages",
     "Other"
+  ],
+  "keywords": [
+    "copilot",
+    "ai",
+    "codebase",
+    "documentation",
+    "mcp",
+    "agent",
+    "context",
+    "analysis"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",

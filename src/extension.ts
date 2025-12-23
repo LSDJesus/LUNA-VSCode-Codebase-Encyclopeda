@@ -87,6 +87,35 @@ export async function activate(context: vscode.ExtensionContext) {
         treeView,
         uriHandler
     );
+
+    // Check if workspace needs initialization (AFTER commands are registered)
+    await checkAndPromptInitialization(codebaseAnalyzer);
+}
+
+async function checkAndPromptInitialization(codebaseAnalyzer: any) {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+        return; // No workspace open
+    }
+
+    const fs = require('fs');
+    const codebasePath = path.join(workspaceFolder.uri.fsPath, '.codebase');
+    
+    // Check if .codebase directory exists
+    if (!fs.existsSync(codebasePath)) {
+        const action = await vscode.window.showInformationMessage(
+            '🚀 Welcome to LUNA! Would you like to set up your codebase encyclopedia?',
+            'Initialize Now',
+            'Not Now',
+            'Learn More'
+        );
+
+        if (action === 'Initialize Now') {
+            vscode.commands.executeCommand('luna-encyclopedia.initialize');
+        } else if (action === 'Learn More') {
+            vscode.env.openExternal(vscode.Uri.parse('https://github.com/yourusername/LUNA-VSCode-Codebase-Encyclopeda#readme'));
+        }
+    }
 }
 
 async function registerMCPServer(context: vscode.ExtensionContext) {
