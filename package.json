@@ -7,9 +7,9 @@
   "icon": "resources/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/LUNA-VSCode-Codebase-Encyclopeda"
+    "url": "https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda"
   },
-  "homepage": "https://github.com/yourusername/LUNA-VSCode-Codebase-Encyclopeda#readme",
+  "homepage": "https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda#readme",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
