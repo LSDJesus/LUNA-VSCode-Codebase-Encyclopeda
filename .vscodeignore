@@ -2,7 +2,6 @@
 .vscode-test/**
 src/**
 mcp-server/src/**
-mcp-server/node_modules/**
 mcp-server/tsconfig.json
 .gitignore
 .yarnrc
