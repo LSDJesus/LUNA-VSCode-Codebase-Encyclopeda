@@ -1,0 +1,46 @@
+{
+  "description": "Custom template for LUNA file summaries. Copy this to .luna-template.json and customize for your project.",
+  "funTestMode": {
+    "template": {
+      "vibeCheck": "3 emojis describing this code's energy (clean, chaotic, optimized, etc.)",
+      "isSpaghetti": "1-10 rating of how tangled/complex this logic is",
+      "juniorReview": "One sentence explaining this file to a 5-month-old coder"
+    },
+    "description": "Fun way to test LUNA and learn about your codebase! Try this template first."
+  },
+  "examples": [
+    {
+      "name": "Example 1: Security & Performance Focus",
+      "template": {
+        "securityConsiderations": "Note any security-sensitive operations, authentication, or data handling",
+        "performanceNotes": "Note any performance-critical code or potential bottlenecks",
+        "testingStrategy": "What tests exist for this file? What should be tested?"
+      }
+    },
+    {
+      "name": "Example 2: Team Ownership & Status",
+      "template": {
+        "owner": "Team or person responsible for this module",
+        "status": "Active, Deprecated, Beta, Stable, etc.",
+        "priority": "Critical, High, Medium, Low",
+        "knownIssues": "Any known bugs or technical debt?"
+      }
+    },
+    {
+      "name": "Example 3: API & Data Focus",
+      "template": {
+        "apiVersion": "API version this module implements",
+        "externalAPIs": "External services this module calls",
+        "dataModels": "Primary data structures or database tables",
+        "integrations": "Other services or systems this integrates with"
+      }
+    }
+  ],
+  "template": {
+    "securityConsiderations": "Analyze security-sensitive operations, authentication, credential handling, data access controls",
+    "performanceNotes": "Note performance-critical sections, potential bottlenecks, optimization opportunities",
+    "owner": "If applicable, who owns/maintains this module?",
+    "knownIssues": "Any known bugs, technical debt, or planned improvements?"
+  },
+  "instructions": "Rename this file to '.luna-template.json' to enable custom fields. The template above will be appended to LUNA's analysis prompt, and the Copilot analyzer will include these fields in generated summaries. Custom fields will appear in both MD and JSON output."
+}

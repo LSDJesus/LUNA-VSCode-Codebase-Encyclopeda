@@ -52,8 +52,13 @@ See LUNA_INSTRUCTIONS.md for complete documentation.
 
 ## What Not to Edit
 
-- **.lunasummarize** - You can edit this before generation
 - **LUNA_GUIDE.md** - Auto-generated, will be overwritten
-- All .md and .json files - Auto-generated, will be overwritten on updates
+- **dead-code-analysis.json** - Auto-generated, will be overwritten
+- **component-map.json** - Auto-generated, will be overwritten
+- **complexity-heatmap.json** - Auto-generated, will be overwritten
+- All `.md` and `.json` file summaries - Auto-generated, will be overwritten on updates
 
-The only file you should customize is **.lunasummarize** before running summaries!
+## What You CAN Edit
+
+- **`.lunasummarize`** - Configure which files to analyze (file types, exclusions)
+- **`.luna-template.json`** - Add custom fields to all summaries (power user feature)

@@ -97,6 +97,31 @@ For detailed instructions, see **LUNA_INSTRUCTIONS.md** in this folder.
 
 ---
 
+## Custom Templates (Power User Feature)
+
+Want summaries to include project-specific fields like security analysis, performance notes, or team ownership?
+
+### Enable Custom Fields:
+
+1. Copy \`.luna-template.json.example\` to \`.luna-template.json\`
+2. Edit the \`template\` section with your custom fields
+3. Re-run summaries
+
+Example:
+\`\`\`json
+{
+  "template": {
+    "securityConsiderations": "Note security-sensitive operations and data handling",
+    "performanceNotes": "Identify performance bottlenecks",
+    "owner": "Who owns this module?"
+  }
+}
+\`\`\`
+
+**Result**: These fields automatically appear in every summary (both markdown and JSON formats)!
+
+---
+
 ## Common Questions
 
 **Q: Do I need to commit .codebase/ to git?**  

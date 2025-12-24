@@ -129,6 +129,28 @@ Scores files 0-10 based on **coupling** (dependencies), **impact** (dependents),
 
 See `.codebase/ANALYSIS_GUIDE.md` for detailed explanations.
 
+### Custom Templates (Power User Feature)
+
+Want to add custom fields to summaries? Create a `.luna-template.json` file in `.codebase/`:
+
+**Example** - Add security and performance analysis:
+```json
+{
+  "template": {
+    "securityConsiderations": "Note authentication, authorization, data handling security",
+    "performanceNotes": "Identify performance-critical code and bottlenecks",
+    "owner": "Team responsible for this module",
+    "knownIssues": "Any known bugs or technical debt"
+  }
+}
+```
+
+**Result**: Custom fields appear in both `.md` (human-readable) and `.json` (for agents) summaries.
+
+**Pro Tip**: Custom fields are automatically searchable by Copilot agents—no additional tooling needed! Agents can ask "Which files have security risks?" and search_summaries will find them.
+
+**See also**: `.luna-template.json.example` for more examples (security focus, API focus, team ownership, etc.).
+
 ---
 
 ## Quick Start

@@ -47,6 +47,8 @@ interface FileSummary {
         lines?: string; // Where this file is used by the other file
     }>;
     implementationNotes: string;
+    // Custom fields from .luna-template.json
+    [key: string]: any;
 }
 
 export class CodebaseAnalyzer {
@@ -176,6 +178,17 @@ export class CodebaseAnalyzer {
                 throw new Error(`Template not found: ${templatePath}`);
             }
             fs.copyFileSync(templatePath, readmePath);
+        }
+
+        // Create .luna-template.json.example if it doesn't exist
+        const templateExamplePath = path.join(codebasePath, '.luna-template.json.example');
+        if (!fs.existsSync(templateExamplePath)) {
+            progress.report({ message: 'Creating .luna-template.json.example...' });
+            const exampleTemplatePath = path.join(this.context.extensionPath, 'resources', 'templates', '.luna-template.json.example');
+            if (!fs.existsSync(exampleTemplatePath)) {
+                throw new Error(`Template not found: ${exampleTemplatePath}`);
+            }
+            fs.copyFileSync(exampleTemplatePath, templateExamplePath);
         }
 
         progress.report({ message: 'Initialization complete!' });
@@ -469,6 +482,9 @@ export class CodebaseAnalyzer {
         // Language-specific import guidance
         const languageHints = this.getLanguageHints(fileExt);
         
+        // Load custom template if it exists
+        const customTemplate = this.loadCustomTemplate();
+        
         return `Analyze this source file and generate BOTH a Markdown summary AND a JSON structure.
 
 **File**: \`${relPath}\`
@@ -539,6 +555,7 @@ Important details.
 \`\`\`${fileExt.substring(1) || 'txt'}
 ${truncatedContent}
 \`\`\`
+${customTemplate}
 
 Generate the analysis now. Be precise and focus on information useful for AI codebase navigation.`;
     }
@@ -567,6 +584,42 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
         }
         
         return '';
+    }
+    
+    private loadCustomTemplate(): string {
+        try {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                return '';
+            }
+            
+            const codebasePath = path.join(workspaceFolders[0].uri.fsPath, '.codebase');
+            const templatePath = path.join(codebasePath, '.luna-template.json');
+            
+            // Only load if template file exists
+            if (!fs.existsSync(templatePath)) {
+                return '';
+            }
+            
+            const templateContent = JSON.parse(fs.readFileSync(templatePath, 'utf-8'));
+            
+            if (!templateContent.template || typeof templateContent.template !== 'object') {
+                return '';
+            }
+            
+            // Build custom fields section for the prompt
+            let customPrompt = '\n**Custom Analysis Fields** (from .luna-template.json):\n';
+            for (const [key, description] of Object.entries(templateContent.template)) {
+                customPrompt += `- \`${key}\`: ${description}\n`;
+            }
+            
+            customPrompt += '\nInclude these fields INSIDE the "summary" object of your JSON response using the same field names.\n';
+            
+            return customPrompt;
+        } catch (error) {
+            console.warn('Failed to load custom template:', error);
+            return '';
+        }
     }
     
     private parseResponse(response: string, relPath: string): { markdown: string; json: FileSummary } {
