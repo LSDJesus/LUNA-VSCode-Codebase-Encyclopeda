@@ -78,12 +78,50 @@ export async function activate(context: vscode.ExtensionContext) {
         summaryTreeProvider.refresh();
     });
 
+    const summarizeFileCommand = vscode.commands.registerCommand('luna-encyclopedia.summarizeFile', async (fileUri?: vscode.Uri) => {
+        // Get the file URI from context menu or active editor
+        const targetUri = fileUri || vscode.window.activeTextEditor?.document.uri;
+        
+        if (!targetUri) {
+            vscode.window.showErrorMessage('No file selected. Please right-click a file or open one in the editor.');
+            return;
+        }
+
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(targetUri);
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('File is not in the current workspace.');
+            return;
+        }
+
+        // Get relative path from workspace root
+        const relativePath = path.relative(workspaceFolder.uri.fsPath, targetUri.fsPath);
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Summarizing ${path.basename(targetUri.fsPath)}...`,
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                await codebaseAnalyzer.summarizeSingleFile(relativePath, workspaceFolder.uri.fsPath, progress, token);
+                summaryTreeProvider.refresh();
+                vscode.window.showInformationMessage(`✅ Summary generated for ${path.basename(targetUri.fsPath)}`);
+                
+                // Show the summary in the summary panel
+                const summaryPath = path.join(workspaceFolder.uri.fsPath, '.codebase', relativePath.replace(/\.[^.]+$/, '.md'));
+                SummaryPanel.createOrShow(context.extensionUri, summaryPath);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to summarize file: ${error}`);
+            }
+        });
+    });
+
     context.subscriptions.push(
         initCommand,
         generateCommand, 
         updateStaleCommand, 
         showSummaryCommand, 
-        refreshCommand, 
+        refreshCommand,
+        summarizeFileCommand,
         treeView,
         uriHandler
     );

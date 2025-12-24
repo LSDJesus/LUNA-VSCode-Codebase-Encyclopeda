@@ -2,7 +2,7 @@
   "name": "luna-codebase-encyclopedia",
   "displayName": "LUNA Codebase Encyclopedia",
   "description": "Agent-First Context API: Generate structured summaries of your codebase for instant, zero-token queries via Copilot Agent Mode",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "publisher": "ai-evolution",
   "icon": "resources/icon.png",
   "repository": {
@@ -52,8 +52,23 @@
         "command": "luna-encyclopedia.showSummary",
         "title": "LUNA: Show Summary Panel",
         "icon": "$(file)"
+      },
+      {
+        "command": "luna-encyclopedia.summarizeFile",
+        "title": "LUNA: Summarize This File",
+        "icon": "$(file-code)"
       }
     ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "luna-encyclopedia.summarizeFile",
+          "group": "1_modification",
+          "when": "resourceExtname =~ /^\\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|h)$/",
+          "title": "LUNA: Summarize This File"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {

@@ -98,6 +98,41 @@
 
 ### Step 1: Initialize Your Workspace
 
+---
+
+## Generated Files & Analysis
+
+LUNA generates **structured summaries AND meta-analysis files** in the `.codebase/` folder:
+
+### File Summaries
+- **`src/file.md`** - Human-readable summary (purpose, components, dependencies, line numbers)
+- **`src/file.json`** - Machine-readable summary (structured for AI agent queries)
+- **`src/foldername.index.md`** - Directory index with file listings
+- **`src/foldername.index.json`** - Directory index (machine-readable)
+
+### Meta-Analysis Files
+LUNA automatically generates actionable insights about your codebase:
+
+#### 1. **`dead-code-analysis.json`** - Find Unused Exports
+Identifies exports that are defined but never imported. Clean up dead code before it becomes technical debt.
+
+#### 2. **`component-map.json`** - Understand Architecture
+Groups files into logical components (Core, UI, Utilities, etc.). Use for documentation and architecture reviews.
+
+#### 3. **`complexity-heatmap.json`** - Identify Refactoring Candidates
+Scores files 0-10 based on **coupling** (dependencies), **impact** (dependents), and **volatility** (change likelihood).
+- 🔴 **8-10: REFACTOR** - Consider breaking into smaller files
+- ⚠️ **6-7: CONSIDER_REFACTOR** - Monitor this file
+- ✅ **0-5: OK** - Good complexity
+
+**Perfect for**: Deciding which files to refactor first, understanding quality hotspots.
+
+See `.codebase/ANALYSIS_GUIDE.md` for detailed explanations.
+
+---
+
+## Quick Start
+
 **First time only!** Creates configuration and instruction files.
 
 1. Open your project in VS Code

@@ -412,12 +412,87 @@ excludeFiles:
 
 ---
 
+## Phase 6: Using Code Analysis & Insights
+
+After summaries are generated, LUNA automatically creates meta-analysis files:
+
+### Dead Code Analysis
+**File**: \`dead-code-analysis.json\`
+
+Identifies exports that are defined but never imported elsewhere.
+
+\`\`\`
+#get_file_summary with query=dead-code-analysis.json, search_type=keyword
+\`\`\`
+
+**Use for:**
+- Finding code to remove
+- Detecting incomplete refactorings
+- Cleaning up public API surface
+
+### Component Map
+**File**: \`component-map.json\`
+
+Groups files into logical architectural components (Core, UI, Utilities, Integrations, etc.).
+
+\`\`\`
+#get_file_summary with query=component-map.json, search_type=keyword
+\`\`\`
+
+**Use for:**
+- Understanding architecture
+- Team communication about code organization
+- Planning refactoring efforts
+- Documentation
+
+### Complexity Heatmap
+**File**: \`complexity-heatmap.json\`
+
+Scores files 0-10 based on **coupling** (dependencies), **impact** (dependents), and **volatility** (change likelihood).
+
+\`\`\`
+#get_file_summary with query=complexity-heatmap.json, search_type=keyword
+\`\`\`
+
+**Risk Levels:**
+- 🔴 **8-10: REFACTOR** - File is a bottleneck. Consider splitting into smaller modules.
+- ⚠️ **6-7: CONSIDER_REFACTOR** - Elevated risk. Monitor for quality issues.
+- ✅ **0-5: OK** - Healthy complexity. No immediate action needed.
+
+**Use for:**
+- Identifying files that need refactoring
+- Prioritizing quality improvements
+- Understanding code hotspots
+- Assessing refactoring scope
+
+### Querying Analysis Files
+
+When a user asks about code quality, refactoring, or architecture:
+
+1. Check \`dead-code-analysis.json\` for cleanup opportunities
+2. Use \`component-map.json\` to explain architecture
+3. Reference \`complexity-heatmap.json\` when suggesting refactoring
+4. Provide specific file names and scores when recommending changes
+
+Example:
+\`\`\`
+User: "Which files should I refactor first?"
+You: "Based on the complexity heatmap, [file.ts] scores 9/10 due to high coupling
+     and impact. It's a critical bottleneck. I'd suggest extracting [specific logic]
+     into a separate module."
+\`\`\`
+
+---
+
 ## Best Practices for Copilot Agents
 
 ✅ **DO**:
 - Search summaries first before analyzing individual files
 - Use \`get_dependency_graph\` to understand architecture before making changes
 - Reference exact line numbers from summaries when guiding users to code
+- Check \`complexity-heatmap.json\` when suggesting refactoring
+- Recommend removing \`dead-code-analysis.json\` findings
+- Use \`component-map.json\` to explain architecture
 - Regenerate after suggesting significant refactors
 
 ❌ **DON'T**:

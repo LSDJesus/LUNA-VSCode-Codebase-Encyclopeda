@@ -10,6 +10,7 @@ import { SummaryIssueTracker } from './summaryIssueTracker';
 import { ConcurrencyLimiter } from './concurrencyLimiter';
 import { GitBranchDetector } from './gitBranchDetector';
 import { StaticImportAnalyzer } from './staticImportAnalyzer';
+import { DependencyAnalyzer } from './dependencyAnalyzer';
 
 interface FileSummary {
     purpose: string;
@@ -337,6 +338,11 @@ export class CodebaseAnalyzer {
         progress.report({ message: 'Computing dependency relationships...' });
         DependencyLinker.computeUsedByRelationships(workspaceFolder.uri.fsPath, codebasePath);
 
+        // Analyze code structure for dead code, components, and complexity
+        progress.report({ message: 'Analyzing codebase structure...' });
+        const analyzer = new DependencyAnalyzer();
+        await analyzer.analyze(workspaceFolder.uri.fsPath);
+
         // Generate issues report
         progress.report({ message: 'Generating summary report...' });
         const reportPath = path.join(codebasePath, 'SUMMARY_REPORT.md');
@@ -662,11 +668,23 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
     ): Promise<void> {
         const relativePath = path.relative(workspacePath, dir.path);
         const codebasePath = path.join(workspacePath, '.codebase');
-        const indexPath = path.join(codebasePath, relativePath, 'INDEX.md');
+        const dirName = dir.name;
+        const indexPath = path.join(codebasePath, relativePath, `${dirName}.index.md`);
+        const indexJsonPath = path.join(codebasePath, relativePath, `${dirName}.index.json`);
 
         // Build directory summary
-        const dirName = dir.name;
         let indexContent = `# ${dirName}/\n\n## Overview\n\n`;
+        
+        // Prepare JSON structure
+        const indexJson: any = {
+            name: dirName,
+            path: relativePath + '/',
+            generated: new Date().toISOString(),
+            fileCount: dir.files ? dir.files.length : 0,
+            subdirCount: dir.subdirs ? dir.subdirs.length : 0,
+            files: [],
+            subdirectories: []
+        };
 
         // List files in this directory
         if (dir.files && dir.files.length > 0) {
@@ -689,6 +707,13 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
                 }
 
                 indexContent += `- [${fileName}](${summaryRelPath}) — ${description}\n`;
+                
+                // Add to JSON
+                indexJson.files.push({
+                    name: fileName,
+                    path: fileRelPath,
+                    description: description
+                });
             }
         }
 
@@ -697,18 +722,28 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
             indexContent += `\n### Subdirectories\n\n`;
             for (const subdir of dir.subdirs) {
                 const subdirRelPath = path.relative(dir.path, subdir.path);
-                indexContent += `- [${subdir.name}/](${subdirRelPath}/INDEX.md) — (${subdir.files.length} files)\n`;
+                indexContent += `- [${subdir.name}/](${subdirRelPath}/${subdir.name}.index.md) — (${subdir.files.length} files)\n`;
+                
+                // Add to JSON
+                indexJson.subdirectories.push({
+                    name: subdir.name,
+                    path: path.join(relativePath, subdir.name) + '/',
+                    fileCount: subdir.files.length,
+                    subdirCount: subdir.subdirs ? subdir.subdirs.length : 0
+                });
             }
         }
 
-        indexContent += `\n## Notes\n\nAuto-generated directory index. See [../INDEX.md](../INDEX.md) for project overview.\n`;
+        const parentDirName = path.basename(path.dirname(dir.path)) || 'root';
+        indexContent += `\n## Notes\n\nAuto-generated directory index. See [../${parentDirName}.index.md](../${parentDirName}.index.md) for parent directory.\n`;
 
-        // Write INDEX.md
+        // Write index files
         const indexDir = path.dirname(indexPath);
         if (!fs.existsSync(indexDir)) {
             fs.mkdirSync(indexDir, { recursive: true });
         }
         fs.writeFileSync(indexPath, indexContent, 'utf-8');
+        fs.writeFileSync(indexJsonPath, JSON.stringify(indexJson, null, 2), 'utf-8');
     }
 
     private async generateRootIndex(
@@ -716,27 +751,86 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
         workspacePath: string
     ): Promise<void> {
         const codebasePath = path.join(workspacePath, '.codebase');
-        const indexPath = path.join(codebasePath, 'INDEX.md');
+        const projectName = path.basename(workspacePath);
+        const indexPath = path.join(codebasePath, `${projectName}.index.md`);
+        const indexJsonPath = path.join(codebasePath, `${projectName}.index.json`);
+        const timestamp = new Date().toISOString();
 
         let indexContent = `# Codebase Summaries Index\n\n`;
-        indexContent += `**Project**: ${path.basename(workspacePath)}\n`;
-        indexContent += `**Generated**: ${new Date().toISOString()}\n\n`;
+        indexContent += `**Project**: ${projectName}\n`;
+        indexContent += `**Generated**: ${timestamp}\n\n`;
 
         indexContent += `## Structure\n\n`;
+        
+        // Prepare JSON structure
+        const indexJson: any = {
+            name: projectName,
+            path: '',
+            generated: timestamp,
+            fileCount: 0,
+            subdirCount: tree.subdirs ? tree.subdirs.length : 0,
+            subdirectories: []
+        };
 
         // List top-level subdirectories
         if (tree.subdirs && tree.subdirs.length > 0) {
             for (const subdir of tree.subdirs) {
                 const fileCounts = `(${subdir.files.length} files`;
                 const subCounts = subdir.subdirs.length > 0 ? `, ${subdir.subdirs.length} subdirs` : '';
-                indexContent += `- [${subdir.name}/](${subdir.name}/INDEX.md) ${fileCounts}${subCounts})\n`;
+                indexContent += `- [${subdir.name}/](${subdir.name}/${subdir.name}.index.md) ${fileCounts}${subCounts})\n`;
+                
+                indexJson.fileCount += subdir.files.length;
+                indexJson.subdirectories.push({
+                    name: subdir.name,
+                    path: subdir.name + '/',
+                    fileCount: subdir.files.length,
+                    subdirCount: subdir.subdirs ? subdir.subdirs.length : 0
+                });
             }
         }
 
         indexContent += `\n## Quick Navigation\n\n`;
-        indexContent += `See individual INDEX.md files in each directory for detailed file listings and descriptions.\n`;
+        indexContent += `See individual \`foldername.index.md\` files in each directory for detailed file listings and descriptions.\n`;
         indexContent += `Start with [../README.md](../README.md) for project documentation.\n`;
 
         fs.writeFileSync(indexPath, indexContent, 'utf-8');
+        fs.writeFileSync(indexJsonPath, JSON.stringify(indexJson, null, 2), 'utf-8');
+    }
+
+    async summarizeSingleFile(
+        relPath: string,
+        workspacePath: string,
+        progress: vscode.Progress<{ message?: string; increment?: number }>,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        // Check if Language Model API is available
+        const modelSelector = this.getModelSelector();
+        const models = await vscode.lm.selectChatModels(modelSelector);
+        if (models.length === 0) {
+            const modelName = modelSelector.family || 'unknown';
+            throw new Error(`No Copilot model "${modelName}" available. Please ensure GitHub Copilot is installed and active.`);
+        }
+
+        // Resolve full file path
+        const filePath = path.join(workspacePath, relPath);
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${relPath}`);
+        }
+
+        progress.report({ message: `Analyzing ${path.basename(filePath)}...` });
+
+        // Analyze the single file
+        try {
+            await this.analyzeSingleFile(filePath, workspacePath, models[0]);
+            progress.report({ increment: 100 });
+        } catch (error) {
+            if (token.isCancellationRequested) {
+                throw new Error('Summarization cancelled');
+            }
+            throw error;
+        }
     }
 }
+
