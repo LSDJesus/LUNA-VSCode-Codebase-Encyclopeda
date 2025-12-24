@@ -172,19 +172,5 @@ export class DirectoryTreeBuilder {
         }
 
         // Create placeholder INDEX.md files for directories
-        const directories = this.getDirectoriesBottomUp(tree);
-        for (const dir of directories) {
-            const relativePath = path.relative(workspacePath, dir.path);
-            const indexPath = path.join(codebasePath, relativePath, 'INDEX.md');
-            const indexDir = path.dirname(indexPath);
-
-            if (!fs.existsSync(indexDir)) {
-                fs.mkdirSync(indexDir, { recursive: true });
-            }
-
-            if (!fs.existsSync(indexPath)) {
-                fs.writeFileSync(indexPath, `# ${dir.name}/\n\n[Generating directory summary...]\n`, 'utf-8');
-            }
-        }
     }
 }

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { IgnorePatternMatcher } from './ignorePatternMatcher';
-import { BootstrapGuideGenerator } from './bootstrapGuideGenerator';
 import { DirectoryTreeBuilder } from './directoryTreeBuilder';
 import { StalenessDetector } from './stalenessDetector';
 import { DependencyLinker } from './dependencyLinker';
@@ -273,11 +272,6 @@ export class CodebaseAnalyzer {
             fs.copyFileSync(templatePath, instructionsPath);
         }
         
-        // Generate bootstrap guide
-        const guideContent = BootstrapGuideGenerator.generateGuide(workspaceFolder.uri.fsPath);
-        const guidePath = path.join(codebasePath, 'LUNA_GUIDE.md');
-        fs.writeFileSync(guidePath, guideContent, 'utf-8');
-
         // Build directory tree and create placeholders
         progress.report({ message: `Building directory tree (${files.length} files)...` });
         const ignoreMatcher = new IgnorePatternMatcher(workspaceFolder.uri.fsPath);

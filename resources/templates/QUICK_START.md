@@ -16,20 +16,31 @@ Welcome to LUNA! Follow these 3 simple steps to get your codebase encyclopedia u
 
 ## Step 2: Ask Copilot Agent to Configure LUNA
 
-Copy and paste this prompt into Copilot Chat:
+Copy and paste this prompt into Copilot Chat (make sure you're in Agent Mode):
 
 ```
-@workspace I need you to help configure LUNA for this project. Please:
+@workspace YOU MUST EDIT the .lunasummarize file directly. Do NOT just suggest changes in chat - you must actually edit the file.
 
-1. Read the README.md and LUNA_INSTRUCTIONS.md in the .codebase directory
-2. Analyze this project's structure and file types
-3. Edit the .lunasummarize configuration file to match this project:
-   - Set the correct file extensions (includeExtensions)
-   - Add any project-specific directories to exclude
-   - Adjust settings based on the project type
+Follow these steps carefully:
 
-When you're done configuring, let me know and I'll run the summary generation.
+1. Read .codebase/LUNA_INSTRUCTIONS.md completely to understand how LUNA works
+2. Analyze the entire project structure by exploring the workspace:
+   - What programming languages are used?
+   - What are ALL the source file extensions? (don't miss any!)
+   - Are there multiple languages? (TypeScript + Python? JavaScript + Go?)
+3. Identify directories to EXCLUDE (node_modules, build outputs, .git, etc.)
+4. Identify files to EXCLUDE (tests, generated code, lock files, etc.)
+5. DIRECTLY EDIT .codebase/.lunasummarize with your configuration:
+   - includeExtensions: List EVERY source code file type you found
+   - excludePatterns: Add project-specific directories to skip
+   - excludeFiles: Add project-specific temp/generated/config files
+6. SHOW me the edited .lunasummarize file in the chat to verify your changes were saved
+7. Reply "CONFIGURATION COMPLETE" when done
+
+Remember: You must EDIT the file, not just describe what should be edited. I will run the summary generation immediately after.
 ```
+
+**Important**: You MUST see the edited file contents in the chat before proceeding to the next step.
 
 ---
 
