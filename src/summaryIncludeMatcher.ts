@@ -13,7 +13,7 @@ interface LunaSummarizeConfig {
     };
 }
 
-export class IgnorePatternMatcher {
+export class SummaryIncludeMatcher {
     private includeDirectories: string[] = [];
     private includeFiles: string[] = [];
     private includeFiletypes: string[] = [];

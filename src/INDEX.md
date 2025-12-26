@@ -9,7 +9,7 @@ Contains all TypeScript source code for the LUNA VS Code Extension. Handles file
 ### Core Logic
 - [**extension.ts**](extension.ts) — Extension activation, command registration, and initialization
 - [**codebaseAnalyzer.ts**](codebaseAnalyzer.ts) — File discovery, Copilot API integration, summary generation pipeline
-- [**ignorePatternMatcher.ts**](ignorePatternMatcher.ts) — Parses `.lunasummarize` config, handles include/exclude patterns
+- [**summaryIncludeMatcher.ts**](summaryIncludeMatcher.ts) — Parses `.lunasummarize` config, handles include/exclude patterns for opt-in file selection
 - [**bootstrapGuideGenerator.ts**](bootstrapGuideGenerator.ts) — Auto-generates `LUNA_GUIDE.md` for each project
 
 ### UI Components
@@ -21,7 +21,7 @@ Contains all TypeScript source code for the LUNA VS Code Extension. Handles file
 | Feature | Files |
 |---------|-------|
 | Summary generation | codebaseAnalyzer.ts |
-| Config management | ignorePatternMatcher.ts |
+| Config management | summaryIncludeMatcher.ts |
 | File filtering | codebaseAnalyzer.ts |
 | UI rendering | summaryPanel.ts, summaryTreeProvider.ts |
 | User guidance | bootstrapGuideGenerator.ts |

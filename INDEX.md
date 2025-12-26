@@ -52,7 +52,7 @@ Copilot answers from cached summaries (zero token cost)
 | File analysis & summary generation| [src/codebaseAnalyzer.ts](src/codebaseAnalyzer.ts) |
 | MCP tool implementations          | [mcp-server/src/index.ts](mcp-server/src/index.ts) |
 | Summary cache management          | [mcp-server/src/summaryManager.ts](mcp-server/src/summaryManager.ts) |
-| Config parsing (.lunasummarize)   | [src/ignorePatternMatcher.ts](src/ignorePatternMatcher.ts) |
+| Config parsing (.lunasummarize)   | [src/summaryIncludeMatcher.ts](src/summaryIncludeMatcher.ts) |
 | Bootstrap guide generator         | [src/bootstrapGuideGenerator.ts](src/bootstrapGuideGenerator.ts) |
 
 ## Development Commands

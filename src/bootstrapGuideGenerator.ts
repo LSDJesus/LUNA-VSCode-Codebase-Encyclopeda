@@ -87,11 +87,12 @@ Copilot automatically uses LUNA's summaries to answer instantly.
 
 ### Step 3: Configuration (Optional)
 
-If you want to customize what files are analyzed:
+To customize what files are analyzed:
 
 1. Edit \`.codebase/.lunasummarize\`
-2. Adjust include/exclude patterns
-3. Re-run "LUNA: Generate Codebase Summaries"
+2. Add directories to \`include.directories\` (e.g., \`src/\`, \`lib/\`)
+3. Optionally add exclusions to \`exclude.patterns\` (e.g., tests)
+4. Re-run "LUNA: Generate Codebase Summaries"
 
 For detailed instructions, see **LUNA_INSTRUCTIONS.md** in this folder.
 
@@ -212,23 +213,30 @@ Ask Copilot Chat (without Agent Mode):
 
 Check the file: \`.codebase/.lunasummarize\`
 
-Example structure:
+Example opt-in structure:
 \`\`\`yaml
-includeExtensions: ts js py
-excludePatterns:
-  - node_modules/**
-  - dist/**
-  - __pycache__/**
-excludeFiles:
-  - **/*.test.ts
-  - **/*.spec.js
+include:
+  directories:
+    - src/
+    - lib/
+  files:
+    # Optional: specific entry points
+    # - index.ts
+
+exclude:
+  patterns:
+    - "**/*.test.ts"
+    - "**/*.spec.js"
+    - "**/*.d.ts"
 \`\`\`
 
 Ask yourself:
-- ✅ Are all source directories included?
-- ✅ Are test files excluded?
-- ✅ Are build outputs excluded?
-- ❌ Are important directories accidentally excluded?
+- ✅ Are all source directories in \`include.directories\`?
+- ✅ Are test files in \`exclude.patterns\`?
+- ❌ Did you forget any source directories?
+
+**Note**: Opt-in model means you DON'T need to exclude node_modules, dist, etc.  
+They're automatically ignored unless you explicitly include them.
 
 ---
 
@@ -257,7 +265,8 @@ For each major component identified in 1B, verify it appears in summaries:
 #get_file_summary with file_path=src/[important-file].ts
 \`\`\`
 
-If the file returns "not found", it's being excluded. Check the \`.lunasummarize\` patterns.
+If the file returns "not found", its directory isn't in \`include.directories\`.  
+Add the containing directory to \`.lunasummarize\` and regenerate.
 
 ### Step 2C: Review Dependencies Graph
 
@@ -276,13 +285,18 @@ This shows what your project actually depends on. If components are missing, adj
 Edit \`.codebase/.lunasummarize\`:
 
 \`\`\`yaml
-# Add specific file extensions used in this project
-includeExtensions: ts tsx js jsx json
+include:
+  directories:
+    - src/
+    - lib/
+    # For monorepo:
+    # - packages/*/src/
+    # - apps/*/src/
 
-# If monorepo: explicitly include source folders
-# Leave commented if single-repo
-# includeDirectories:
-#   - packages/core/src
+exclude:
+  patterns:
+    - "**/*.test.ts"
+    - "**/*.spec.js"
 #   - packages/api/src
 #   - services/auth/src
 \`\`\`
@@ -407,23 +421,29 @@ Example:
 ### Problem: Can't find a file you know exists
 
 **Diagnosis**:
-1. Is it in an excluded pattern in \`.lunasummarize\`?
-2. Is the extension in \`includeExtensions\`?
-3. Is it above the \`maxFileSize\` limit?
+1. Is its directory in \`include.directories\`?
+2. Is it excluded by \`exclude.patterns\`?
+3. Check the file is a code file (not .json, .md, etc.)
 
-**Fix**: Update \`.lunasummarize\`, then regenerate.
+**Fix**: Add the directory to \`include.directories\` in \`.lunasummarize\`, then regenerate.
 
 ### Problem: Too many irrelevant files in summaries
 
-**Diagnosis**: Exclude patterns are too loose
+**Diagnosis**: Too many directories in \`include.directories\`
 
-**Fix**: Add more specific patterns:
+**Fix**: Be more selective about included directories or refine exclusions:
 \`\`\`yaml
-excludeFiles:
-  - **/*.test.*
-  - **/*.spec.*
-  - **/mocks/**
-  - **/fixtures/**
+include:
+  directories:
+    - src/  # Only production code
+    # Don't include: tests/, examples/, scripts/
+
+exclude:
+  patterns:
+    - "**/*.test.*"
+    - "**/*.spec.*"
+    - "**/mocks/**"
+    - "**/fixtures/**"
 \`\`\`
 
 ### Problem: Searches return no results
@@ -431,9 +451,9 @@ excludeFiles:
 **Diagnosis**: Files aren't being analyzed
 
 **Fix**: 
-1. Check \`.lunasummarize\` configuration
-2. Verify files match \`includeExtensions\`
-3. Regenerate with verbose logging enabled
+1. Check \`.lunasummarize\` has directories in \`include.directories\`
+2. Verify those directories contain code files (not config/docs)
+3. Regenerate summaries
 
 ---
 

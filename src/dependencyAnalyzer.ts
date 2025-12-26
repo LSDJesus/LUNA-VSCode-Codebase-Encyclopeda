@@ -192,7 +192,7 @@ export class DependencyAnalyzer {
                 name: 'Configuration & Discovery',
                 description: 'File discovery, ignore patterns, bootstrap',
                 files: Array.from(this.metadata.keys()).filter(f => 
-                    f.includes('ignorePatternMatcher') || f.includes('directoryTreeBuilder') || f.includes('bootstrapGuideGenerator') || f.includes('gitBranchDetector')
+                    f.includes('summaryIncludeMatcher') || f.includes('directoryTreeBuilder') || f.includes('bootstrapGuideGenerator') || f.includes('gitBranchDetector')
                 )
             },
             {

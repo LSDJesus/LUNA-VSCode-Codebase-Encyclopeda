@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { IgnorePatternMatcher } from './ignorePatternMatcher';
+import { SummaryIncludeMatcher } from './summaryIncludeMatcher';
 import { DirectoryTreeBuilder } from './directoryTreeBuilder';
 import { StalenessDetector } from './stalenessDetector';
 import { DependencyLinker } from './dependencyLinker';
@@ -276,7 +276,7 @@ export class CodebaseAnalyzer {
         
         // Build directory tree and create placeholders
         progress.report({ message: `Building directory tree (${files.length} files)...` });
-        const ignoreMatcher = new IgnorePatternMatcher(workspaceFolder.uri.fsPath);
+        const includeMatcher = new SummaryIncludeMatcher(workspaceFolder.uri.fsPath);
         const tree = DirectoryTreeBuilder.buildTree(workspaceFolder.uri.fsPath, files, []);
 
         progress.report({ message: 'Creating file structure...' });
@@ -368,7 +368,7 @@ export class CodebaseAnalyzer {
 
     private async discoverFiles(workspacePath: string): Promise<string[]> {
         const files: string[] = [];
-        const ignoreMatcher = new IgnorePatternMatcher(workspacePath);
+        const includeMatcher = new SummaryIncludeMatcher(workspacePath);
         
         // Get configured file types
         const config = vscode.workspace.getConfiguration('luna-encyclopedia');
@@ -401,13 +401,13 @@ export class CodebaseAnalyzer {
                 const filePath = file.fsPath;
                 const fileName = path.basename(filePath);
                 
-                // Check if file should be included (respects [include] section)
-                if (!ignoreMatcher.shouldInclude(filePath, workspacePath)) {
+                // Check if file should be included (respects include section)
+                if (!includeMatcher.shouldInclude(filePath, workspacePath)) {
                     continue;
                 }
                 
-                // Check against .lunasummarize [exclude] patterns
-                if (ignoreMatcher.shouldExclude(filePath, workspacePath)) {
+                // Check against .lunasummarize exclude patterns
+                if (includeMatcher.shouldExclude(filePath, workspacePath)) {
                     continue;
                 }
                 

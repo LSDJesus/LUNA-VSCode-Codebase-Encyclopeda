@@ -1,6 +1,5 @@
-# yaml
-# LUNA Summarize Configuration
-# Controls which files get analyzed for AI-powered code summaries
+# LUNA Summarize Configuration (YAML)
+# OPT-IN model: Explicitly declare what to analyze
 
 # ═══════════════════════════════════════════════════════════════
 # WHAT LUNA DOES: Quick Reference Encyclopedia
@@ -21,159 +20,177 @@
 # ═══════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════
+# OPT-IN PHILOSOPHY: Why this approach works better
+# ═══════════════════════════════════════════════════════════════
+#
+# Traditional opt-out configs become maintenance nightmares:
+#   - Growing list of exclusions (node_modules, dist, .next, etc.)
+#   - Every new build artifact needs a new exclusion rule
+#   - Config rot as project structure evolves
+#
+# Opt-in is superior because:
+#   ✅ Less maintenance - Only declare what matters
+#   ✅ Better performance - Skip irrelevant directories entirely
+#   ✅ Intentional scope - Clear about project structure
+#   ✅ Easier evolution - Adding new code is explicit
+#
+# RULE: Include source directories, exclude within them as needed
+# ═══════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════
+# INCLUDE: Directories and files to analyze
+# ═══════════════════════════════════════════════════════════════
+include:
+  # Directories containing your source code
+  # Patterns support glob syntax (*, **)
+  directories:
+    - src/
+    - lib/
+    # For monorepos: packages/*/src/
+    # For Python: myapp/
+    # For multi-language: backend/src/ frontend/src/
+  
+  # File types to include (optional)
+  # If specified, only these extensions are analyzed
+  # If omitted, all files in directories are included
+  filetypes:
+    - .ts
+    - .tsx
+    - .js
+    - .jsx
+    # - .py      # Add for Python
+    # - .java    # Add for Java
+    # - .rs      # Add for Rust
+  
+  # Specific files to always include (optional)
+  # Useful for root-level entry points
+  files:
+    # - index.ts
+    # - main.py
+    # - app.tsx
+
+# ═══════════════════════════════════════════════════════════════
+# EXCLUDE: Refinements within included directories
+# ═══════════════════════════════════════════════════════════════
+exclude:
+  # Patterns to skip within included directories
+  # Use this to filter out tests, generated files, etc.
+  patterns:
+    - "**/*.test.ts"
+    - "**/*.test.js"
+    - "**/*.spec.ts"
+    - "**/*.spec.js"
+    - "**/*.d.ts"
+    - "**/*.min.js"
+    - "**/*.min.css"
+    - "**/__tests__/**"
+    - "**/__mocks__/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/.generated/**"
+
+# ═══════════════════════════════════════════════════════════════
 # DECISION FRAMEWORK: What to include vs exclude
 # ═══════════════════════════════════════════════════════════════
 #
-# ✅ INCLUDE: Files containing EXECUTABLE SOURCE CODE
+# ✅ INCLUDE DIRECTORIES with:
 #    - Business logic, algorithms, data structures
 #    - Component implementations, handlers, services
 #    - Custom utilities and helpers you wrote
-#    - Ask: "Does this file define HOW the system works?"
+#    - Ask: "Does this directory define HOW the system works?"
 #
-# ❌ EXCLUDE: Everything else
-#    - Dependencies (node_modules, vendor) - external code
-#    - Generated files (.d.ts, compiled output) - not source of truth
+# ❌ EXCLUDE PATTERNS for:
+#    - Tests (.test.*, .spec.*, __tests__/) - examples, not core logic
+#    - Generated files (.d.ts, .generated/) - not source of truth
 #    - Build artifacts (dist/, build/) - outputs, not inputs
-#    - Tests (.test.*, .spec.*) - examples, not core logic
-#    - Documentation (.md, .txt) - metadata about code
-#    - Config files (.json, .yaml, .toml) - read directly when needed
-#      * package.json, tsconfig.json = reference data, not logic
-#      * Summarizing configs loses fidelity - read them whole instead
-#    - Lock files (package-lock.json) - auto-generated dependency snapshots
+#    - Minified code (*.min.js) - unreadable
 #
-# RULE OF THUMB: If you'd skip it during a code review of the
-# core business logic, exclude it here.
+# YOU DON'T NEED TO EXCLUDE:
+#    - node_modules/ (not in include.directories)
+#    - .git/ (not in include.directories)
+#    - docs/ (not in include.directories)
+#    - Config files (not in include.directories)
 #
-# CONFIG FILES: Don't summarize structured data files - read them
-# directly when you need them. Summaries lose the precise details.
+# The opt-in model means you only process what you explicitly list.
+# No need for massive exclusion lists!
 # ═══════════════════════════════════════════════════════════════
 
-# File extensions to INCLUDE (whitespace-separated)
-# List ONLY your primary source code language(s)
-includeExtensions: ts tsx js jsx
-
-# EXAMPLES FOR OTHER LANGUAGES:
-# Python:           includeExtensions: py
-# Java:             includeExtensions: java
-# Rust:             includeExtensions: rs
-# C/C++:            includeExtensions: c cpp h hpp
-# Multi-language:   includeExtensions: ts py java
-
 # ═══════════════════════════════════════════════════════════════
-# AGENT REASONING GUIDE: When to add/remove file types
+# EXAMPLES FOR COMMON PROJECT STRUCTURES
 # ═══════════════════════════════════════════════════════════════
-# Ask: "Does this file define executable logic or behavior?"
 #
-# YES → Include it (examples: .ts, .py, .java, .rs)
+# TypeScript/Node.js project:
+#   directories:
+#     - src/
+#   filetypes:
+#     - .ts
+#     - .tsx
+#     - .js
+#
+# Python project:
+#   directories:
+#     - myapp/
+#     - lib/
+#   filetypes:
+#     - .py
+#
+# Monorepo (multiple languages):
+#   directories:
+#     - packages/*/src/
+#     - apps/*/src/
+#   filetypes:
+#     - .ts
+#     - .tsx
+#     - .js
+#
+# Full-stack project:
+#   directories:
+#     - backend/src/
+#     - frontend/src/
+#     - shared/
+#   filetypes:
+#     - .ts
+#     - .tsx
+#     - .py
+#
+# React Native:
+#   directories:
+#     - src/
+#     - components/
+#   filetypes:
+#     - .tsx
+#     - .ts
+#     - .native.tsx
+#
+# Rust project:
+#   directories:
+#     - src/
+#     - crates/*/src/
+#   filetypes:
+#     - .rs
+# ═══════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════
+# AGENT REASONING GUIDE: When to add directories
+# ═══════════════════════════════════════════════════════════════
+# Ask: "Does this directory contain executable logic?"
+#
+# YES → Add to include.directories
 #   - Contains functions, classes, methods
 #   - Implements algorithms or business logic
 #   - Worth explaining in natural language
+#   Examples: src/, lib/, app/, services/
 #
-# NO → Exclude it (examples: .json, .md, .lock, .d.ts)
+# NO → Leave it out (will be skipped automatically)
 #   - Configuration data (read directly, don't summarize)
 #   - Documentation (already human-readable)
-#   - Generated artifacts (not source of truth)
-#   - Type definitions (metadata, not logic)
+#   - Build outputs (not source of truth)
+#   - Dependencies (external code)
+#   Examples: node_modules/, dist/, docs/, .git/
 #
 # EDGE CASES:
-# - .sql files: Include if they contain stored procedures/logic
-# - .yaml files: Exclude (config data)
-# - .tsx/.jsx: Include (components are logic)
-# - .graphql files: Exclude (schema definitions, not logic)
+# - scripts/ directory: Include if it has complex automation
+# - config/ directory: Usually exclude (read configs directly)
+# - utils/ directory: Include (reusable logic)
+# - types/ directory: Exclude if only .d.ts files
 # ═══════════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════════
-# AGENT EDGE CASE REASONING: Evaluating ambiguous file types
-# ═══════════════════════════════════════════════════════════════
-# When encountering unfamiliar file types, ask:
-# "Does this file define executable logic or behavior?"
-#
-# ✅ YES → Include (worth summarizing)
-#   Characteristics:
-#     - Contains functions, classes, methods, algorithms
-#     - Implements business logic or behavioral rules
-#     - Defines behavior that changes based on inputs/state
-#     - Has conditional logic, loops, or data transformations
-#     - Worth explaining in natural language
-#   Examples: .ts, .py, .java, .rs, .go, .cpp, .rb, .php
-#
-# ❌ NO → Exclude (read directly instead)
-#   Characteristics:
-#     - Pure configuration or structured data
-#     - Already human-readable documentation
-#     - Generated artifacts (not source of truth)
-#     - Type definitions or metadata only
-#     - Declarative with no conditional logic
-#   Examples: .json, .yaml, .toml, .md, .txt, .lock, .d.ts
-#
-# DECISION MATRIX FOR COMMON EDGE CASES:
-#
-# .sql files:
-#   Simple queries (SELECT/INSERT) → EXCLUDE (data operations)
-#   Stored procedures with IF/WHILE → INCLUDE (executable logic)
-#
-# .yaml/.json files:
-#   Config files (package.json, tsconfig) → EXCLUDE (read whole)
-#   CI/CD with complex conditionals → EXCLUDE (declarative)
-#
-# .tsx/.jsx files:
-#   Components with hooks/state → INCLUDE (behavioral logic)
-#   Pure presentational components → INCLUDE (render logic)
-#
-# .sh/.bash/.ps1 files:
-#   Build scripts with conditionals → INCLUDE (automation)
-#   Simple one-liners → EXCLUDE (trivial)
-#
-# .proto/.graphql/.gql files:
-#   Schema definitions → EXCLUDE (declarative)
-#
-# .html/.css files:
-#   Static markup/styles → EXCLUDE (presentational)
-#   Templates with logic (Jinja, ERB) → INCLUDE (dynamic)
-#
-# WHEN UNCERTAIN: Favor EXCLUDE. Summaries lose precision on
-# non-executable content. Better to read the original directly.
-# ═══════════════════════════════════════════════════════════════
-
-# Directories to EXCLUDE (glob patterns)
-# Skip: dependencies, build outputs, environments, version control
-excludePatterns:
-  - node_modules/**
-  - .git/**
-  - dist/**
-  - build/**
-  - out/**
-  - .venv/**
-  - venv/**
-  - __pycache__/**
-  - .next/**
-  - .nuxt/**
-  - docs/**
-  - .codebase/**
-  - coverage/**
-
-# Individual files to EXCLUDE (glob patterns)
-# Skip: tests, type definitions, minified code, generated files, docs
-excludeFiles:
-  - **/*.test.ts
-  - **/*.test.js
-  - **/*.spec.ts
-  - **/*.spec.js
-  - **/*.min.js
-  - **/*.min.css
-  - **/*.d.ts
-  - **/node_modules/**
-  - package-lock.json
-  - yarn.lock
-  - pnpm-lock.yaml
-  - **/*.md
-  - **/*.mdx
-  - **/*.json
-
-# Maximum file size to analyze (in KB)
-# Files larger than this are typically generated or vendored
-maxFileSize: 500
-
-# Enable verbose logging
-# Useful for debugging which files are being included/excluded
-verbose: false

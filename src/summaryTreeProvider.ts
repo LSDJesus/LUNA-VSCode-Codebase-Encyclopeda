@@ -61,7 +61,7 @@ export class SummaryTreeProvider implements vscode.TreeDataProvider<SummaryItem>
                 
                 // Determine if stale
                 let isStale = false;
-                const workspaceFolder = vscode.workspace.getWorkspaceFolders()?.[0];
+                const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
                 if (workspaceFolder) {
                     const branchAware = vscode.workspace.getConfiguration('luna-encyclopedia').get<boolean>('branchAwareSummaries', false);
                     const relativePath = path.relative(path.join(workspaceFolder.uri.fsPath, '.codebase'), fullPath);
