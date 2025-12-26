@@ -4,6 +4,7 @@ import { SummaryTreeProvider } from './summaryTreeProvider';
 import { SummaryPanel } from './summaryPanel';
 import { CodebaseAnalyzer } from './codebaseAnalyzer';
 import { CodeNavigationHandler } from './codeNavigationHandler';
+import { GitHookManager } from './gitHookManager';
 
 let summaryTreeProvider: SummaryTreeProvider;
 
@@ -78,6 +79,20 @@ export async function activate(context: vscode.ExtensionContext) {
         summaryTreeProvider.refresh();
     });
 
+    const installGitHookCommand = vscode.commands.registerCommand('luna-encyclopedia.installGitHook', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('No workspace folder open.');
+            return;
+        }
+
+        try {
+            await GitHookManager.installPostCommitHook(workspaceFolder.uri.fsPath);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to install Git hook: ${error}`);
+        }
+    });
+
     const summarizeFileCommand = vscode.commands.registerCommand('luna-encyclopedia.summarizeFile', async (fileUri?: vscode.Uri) => {
         // Get the file URI from context menu or active editor
         const targetUri = fileUri || vscode.window.activeTextEditor?.document.uri;
@@ -115,15 +130,23 @@ export async function activate(context: vscode.ExtensionContext) {
         });
     });
 
+    // Watch for file changes to refresh the tree
+    const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+    watcher.onDidChange(() => summaryTreeProvider.refresh());
+    watcher.onDidCreate(() => summaryTreeProvider.refresh());
+    watcher.onDidDelete(() => summaryTreeProvider.refresh());
+
     context.subscriptions.push(
         initCommand,
         generateCommand, 
         updateStaleCommand, 
         showSummaryCommand, 
         refreshCommand,
+        installGitHookCommand,
         summarizeFileCommand,
         treeView,
-        uriHandler
+        uriHandler,
+        watcher
     );
 
     // Check if workspace needs initialization (AFTER commands are registered)

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { StalenessDetector } from './stalenessDetector';
 
 export class SummaryTreeProvider implements vscode.TreeDataProvider<SummaryItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<SummaryItem | undefined | null | void> = new vscode.EventEmitter<SummaryItem | undefined | null | void>();
@@ -57,11 +58,35 @@ export class SummaryTreeProvider implements vscode.TreeDataProvider<SummaryItem>
                 ));
             } else if (entry.name.endsWith('.md')) {
                 const displayName = entry.name.replace('.md', '');
+                
+                // Determine if stale
+                let isStale = false;
+                const workspaceFolder = vscode.workspace.getWorkspaceFolders()?.[0];
+                if (workspaceFolder) {
+                    const branchAware = vscode.workspace.getConfiguration('luna-encyclopedia').get<boolean>('branchAwareSummaries', false);
+                    const relativePath = path.relative(path.join(workspaceFolder.uri.fsPath, '.codebase'), fullPath);
+                    // We don't know the exact extension, so we might need to check common ones or look at the JSON
+                    // For now, let's assume the StalenessDetector can handle it if we find the source file
+                    // A better way is to check the .json file which has the sourceFile path
+                    const jsonPath = fullPath.replace('.md', '.json');
+                    if (fs.existsSync(jsonPath)) {
+                        try {
+                            const metadata = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+                            const sourcePath = path.join(workspaceFolder.uri.fsPath, metadata.sourceFile);
+                            if (fs.existsSync(sourcePath)) {
+                                const report = StalenessDetector.isStale(workspaceFolder.uri.fsPath, sourcePath, branchAware);
+                                isStale = report.isStale;
+                            }
+                        } catch (e) {}
+                    }
+                }
+
                 items.push(new SummaryItem(
                     displayName,
                     fullPath,
                     vscode.TreeItemCollapsibleState.None,
-                    false
+                    false,
+                    isStale
                 ));
             }
         }
@@ -79,7 +104,8 @@ class SummaryItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly resourcePath: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly isDirectory: boolean
+        public readonly isDirectory: boolean,
+        public readonly isStale: boolean = false
     ) {
         super(label, collapsibleState);
         
@@ -92,7 +118,14 @@ class SummaryItem extends vscode.TreeItem {
                 title: 'Open Summary',
                 arguments: [resourcePath]
             };
-            this.iconPath = new vscode.ThemeIcon('file-text');
+            
+            if (isStale) {
+                this.description = '(stale)';
+                this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
+                this.tooltip = `${resourcePath} (Out of date)`;
+            } else {
+                this.iconPath = new vscode.ThemeIcon('file-text');
+            }
         } else {
             this.iconPath = new vscode.ThemeIcon('folder');
         }

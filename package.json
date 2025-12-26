@@ -57,6 +57,11 @@
         "command": "luna-encyclopedia.summarizeFile",
         "title": "LUNA: Summarize This File",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "luna-encyclopedia.installGitHook",
+        "title": "LUNA: Install Git Post-Commit Hook",
+        "icon": "$(git-commit)"
       }
     ],
     "menus": {
@@ -138,20 +143,6 @@
             "Grok Code Fast 1 - PAID (0.25x), X.AI's fast code model"
           ],
           "markdownDescription": "Which Copilot model to use for generating code summaries.\n\n**FREE models** (good choices):\n- `gpt-4o` - Recommended for quality\n- `gpt-5-mini` - Recommended for speed\n- `raptor-mini` - Microsoft's efficient option\n\n**PAID models** require Copilot subscription and consume multiplier credits."
-        },
-        "luna-encyclopedia.maxTokens": {
-          "type": "number",
-          "default": 4096,
-          "minimum": 1024,
-          "maximum": 16000,
-          "description": "Maximum tokens for summary generation (higher = more detailed but slower/costlier)"
-        },
-        "luna-encyclopedia.temperature": {
-          "type": "number",
-          "default": 0,
-          "minimum": 0,
-          "maximum": 1,
-          "description": "Temperature for LLM generation (0 = deterministic, 1 = creative). Keep at 0 for consistent summaries."
         },
         "luna-encyclopedia.fileTypesToInclude": {
           "type": "array",

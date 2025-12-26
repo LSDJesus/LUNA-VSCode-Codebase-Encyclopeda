@@ -48,6 +48,8 @@ Command Palette → "LUNA: Update Stale Summaries"
 (Only regenerates modified files - much faster!)
 ```
 
+**Pro Tip**: Run `LUNA: Install Git Post-Commit Hook` to get automatic reminders in your terminal whenever you commit changes without updating your summaries! 🌙
+
 ## Agent Instructions (Recommended)
 
 To maximize accuracy, teach Copilot to prioritize LUNA summaries. Add this to your system prompt or create a custom agent:
@@ -67,7 +69,11 @@ When answering questions about code:
    - Implementation details not in summary
    - Debugging specific issues
 
-3. **Benefits**:
+3. **Self-Maintenance**:
+   - If you perform a significant refactor or notice a summary is stale, **suggest that the user run the "LUNA: Summarize File" command** to update the encyclopedia.
+   - This keeps the user in the loop and ensures the encyclopedia remains a source of truth.
+
+4. **Benefits**:
    - ⚡ Instant answers (summaries are cached)
    - 💰 Zero token waste (no re-reading files)
    - 🎯 Focus on higher-level architecture

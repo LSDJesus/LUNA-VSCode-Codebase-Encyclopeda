@@ -72,6 +72,8 @@ export class CodebaseAnalyzer {
             throw new Error('No workspace folder open');
         }
 
+        const branchAware = vscode.workspace.getConfiguration('luna-encyclopedia').get<boolean>('branchAwareSummaries', false);
+
         // Check if Language Model API is available
         const modelSelector = this.getModelSelector();
         const models = await vscode.lm.selectChatModels(modelSelector);
@@ -90,7 +92,7 @@ export class CodebaseAnalyzer {
 
         // Check staleness
         progress.report({ message: 'Checking for stale summaries...' });
-        const report = StalenessDetector.getStalenessReport(workspaceFolder.uri.fsPath, files);
+        const report = StalenessDetector.getStalenessReport(workspaceFolder.uri.fsPath, files, branchAware);
 
         if (report.staleFiles.length === 0) {
             vscode.window.showInformationMessage(`All ${report.total} summaries are up-to-date! ✅`);
@@ -441,10 +443,6 @@ export class CodebaseAnalyzer {
         
         // Step 2: Get Copilot's analysis for rich insights
         const prompt = this.buildAnalysisPrompt(relPath, fileExt, content);
-        
-        const config = vscode.workspace.getConfiguration('luna-encyclopedia');
-        const maxTokens = config.get<number>('maxTokens', 4096);
-        const temperature = config.get<number>('temperature', 0);
         
         const messages = [
             vscode.LanguageModelChatMessage.User(prompt)

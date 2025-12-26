@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { GitBranchDetector } from './gitBranchDetector';
 
 export interface StalenessInfo {
     filePath: string;
@@ -50,23 +51,26 @@ export class StalenessDetector {
     /**
      * Get summary generation timestamp from JSON metadata
      */
-    static getSummaryTimestamp(workspacePath: string, filePath: string): Date | null {
+    static getSummaryTimestamp(workspacePath: string, filePath: string, branchAware: boolean = false): Date | null {
         const relativePath = path.relative(workspacePath, filePath);
-        const jsonPath = path.join(workspacePath, '.codebase', relativePath.replace(/\.[^.]+$/, '.json'));
-        
-        if (!fs.existsSync(jsonPath)) {
-            return null;
-        }
+        const basePath = path.join(workspacePath, '.codebase', relativePath.replace(/\.[^.]+$/, ''));
+        const candidates = GitBranchDetector.getFilenamesToTry(basePath, '.json', workspacePath, branchAware);
 
-        try {
-            const content = fs.readFileSync(jsonPath, 'utf-8');
-            const metadata = JSON.parse(content);
-            
-            if (metadata.generatedAt) {
-                return new Date(metadata.generatedAt);
+        for (const candidate of candidates) {
+            if (!fs.existsSync(candidate)) {
+                continue;
             }
-        } catch (error) {
-            // Corrupt or invalid JSON
+
+            try {
+                const content = fs.readFileSync(candidate, 'utf-8');
+                const metadata = JSON.parse(content);
+
+                if (metadata.generatedAt) {
+                    return new Date(metadata.generatedAt);
+                }
+            } catch {
+                // Skip corrupt or invalid JSON
+            }
         }
 
         return null;
@@ -75,8 +79,8 @@ export class StalenessDetector {
     /**
      * Check if a file's summary is stale
      */
-    static isStale(workspacePath: string, filePath: string): StalenessInfo {
-        const summaryTimestamp = this.getSummaryTimestamp(workspacePath, filePath);
+    static isStale(workspacePath: string, filePath: string, branchAware: boolean = false): StalenessInfo {
+        const summaryTimestamp = this.getSummaryTimestamp(workspacePath, filePath, branchAware);
         const gitTimestamp = this.getGitTimestamp(workspacePath, filePath);
         
         if (!summaryTimestamp) {
@@ -115,11 +119,11 @@ export class StalenessDetector {
     /**
      * Get all stale summaries in a workspace
      */
-    static getStaleFiles(workspacePath: string, allFiles: string[]): StalenessInfo[] {
+    static getStaleFiles(workspacePath: string, allFiles: string[], branchAware: boolean = false): StalenessInfo[] {
         const staleInfo: StalenessInfo[] = [];
 
         for (const filePath of allFiles) {
-            const info = this.isStale(workspacePath, filePath);
+            const info = this.isStale(workspacePath, filePath, branchAware);
             if (info.isStale) {
                 staleInfo.push(info);
             }
@@ -131,7 +135,7 @@ export class StalenessDetector {
     /**
      * Get summary of staleness status
      */
-    static getStalenessReport(workspacePath: string, allFiles: string[]): {
+    static getStalenessReport(workspacePath: string, allFiles: string[], branchAware: boolean = false): {
         total: number;
         upToDate: number;
         stale: number;
@@ -144,7 +148,7 @@ export class StalenessDetector {
         let missing = 0;
 
         for (const filePath of allFiles) {
-            const info = this.isStale(workspacePath, filePath);
+            const info = this.isStale(workspacePath, filePath, branchAware);
             
             if (!info.summaryTimestamp) {
                 missing++;

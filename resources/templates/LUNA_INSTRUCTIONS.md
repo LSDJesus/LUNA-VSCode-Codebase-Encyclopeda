@@ -30,6 +30,11 @@ LUNA is an **Agent-First Context API** that generates structured summaries of yo
 - Click links in responses → editor jumps to that location
 - Bidirectional dependencies: "used by" shows reverse imports
 
+### 5. Maintenance & Staleness
+- If you detect that a file has been modified but its summary is stale (check `list_stale_summaries`), **inform the user**.
+- After performing a significant refactor, **explicitly suggest** that the user runs the **"LUNA: Summarize File"** command (or "Update Stale Summaries") to keep your context accurate.
+- Do not attempt to summarize files yourself; rely on the extension's specialized generation logic to maintain consistency.
+
 ## Configuration
 
 Edit **.lunasummarize** in this directory to customize:
