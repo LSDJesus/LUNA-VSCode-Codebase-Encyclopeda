@@ -93,6 +93,19 @@ export class DependencyAnalyzer {
             }, null, 2),
             'utf-8'
         );
+
+        // Step 4: Generate dependency graph
+        const dependencyGraph = this.generateDependencyGraph();
+        fs.writeFileSync(
+            path.join(codebasePath, 'dependency-graph.json'),
+            JSON.stringify({
+                generated: new Date().toISOString(),
+                fileCount: this.metadata.size,
+                graph: dependencyGraph,
+                notes: 'Complete dependency relationships between all files in the codebase.'
+            }, null, 2),
+            'utf-8'
+        );
     }
 
     private async loadMetadata(codebasePath: string): Promise<void> {
@@ -104,12 +117,15 @@ export class DependencyAnalyzer {
                     const filePath = path.join(dir, file);
                     try {
                         const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-                        const relPath = path.relative(codebasePath, filePath).replace(/\.json$/, '');
                         
-                        if (content.publicAPI && content.dependencies) {
-                            const exports = content.publicAPI.map((api: any) => api.signature.split('(')[0].trim());
-                            const internalDeps = content.dependencies.internal || [];
-                            const externalDeps = content.dependencies.external || [];
+                        // Summary data is nested under 'summary' field
+                        const summary = content.summary || content;
+                        
+                        if (summary.publicAPI && summary.dependencies) {
+                            const relPath = content.sourceFile || path.relative(codebasePath, filePath).replace(/\.json$/, '');
+                            const exports = summary.publicAPI.map((api: any) => api.signature?.split('(')[0]?.trim() || '').filter(Boolean);
+                            const internalDeps = (summary.dependencies.internal || []).map((dep: any) => dep.path || dep);
+                            const externalDeps = (summary.dependencies.external || []).map((dep: any) => dep.path || dep.package || dep);
                             
                             const metadata: FileMetadata = {
                                 filePath: relPath,
@@ -173,45 +189,112 @@ export class DependencyAnalyzer {
     }
 
     private generateComponentMap(): ComponentGroup[] {
-        const components: ComponentGroup[] = [
-            {
-                name: 'Core Analysis',
-                description: 'Main codebase analysis and summary generation',
-                files: Array.from(this.metadata.keys()).filter(f => 
-                    f.includes('codebaseAnalyzer') || f.includes('dependencyLinker') || f.includes('staticImportAnalyzer')
-                )
-            },
-            {
-                name: 'UI Components',
-                description: 'VS Code UI integration (panels, tree views)',
-                files: Array.from(this.metadata.keys()).filter(f => 
-                    f.includes('summaryPanel') || f.includes('summaryTreeProvider')
-                )
-            },
-            {
-                name: 'Configuration & Discovery',
-                description: 'File discovery, ignore patterns, bootstrap',
-                files: Array.from(this.metadata.keys()).filter(f => 
-                    f.includes('summaryIncludeMatcher') || f.includes('directoryTreeBuilder') || f.includes('bootstrapGuideGenerator') || f.includes('gitBranchDetector')
-                )
-            },
-            {
-                name: 'Utilities & Helpers',
-                description: 'Reusable utilities and helper functions',
-                files: Array.from(this.metadata.keys()).filter(f => 
-                    f.includes('concurrencyLimiter') || f.includes('stalenessDetector') || f.includes('summaryIssueTracker')
-                )
-            },
-            {
-                name: 'Integration & Navigation',
-                description: 'Code navigation, URI handlers, MCP integration',
-                files: Array.from(this.metadata.keys()).filter(f => 
-                    f.includes('codeNavigationHandler') || f.includes('extension')
-                )
+        const components: ComponentGroup[] = [];
+        const filesByDirectory = new Map<string, string[]>();
+        const uncategorized: string[] = [];
+        
+        // Group files by their top-level directory
+        for (const filePath of this.metadata.keys()) {
+            const pathParts = filePath.split(/[/\\]/);
+            
+            if (pathParts.length > 1) {
+                const topDir = pathParts[0];
+                if (!filesByDirectory.has(topDir)) {
+                    filesByDirectory.set(topDir, []);
+                }
+                filesByDirectory.get(topDir)!.push(filePath);
+            } else {
+                uncategorized.push(filePath);
             }
-        ];
-
+        }
+        
+        // Create components from directory groups
+        for (const [dirName, files] of filesByDirectory.entries()) {
+            if (files.length > 0) {
+                // Generate human-readable names
+                const componentName = this.humanizeDirectoryName(dirName);
+                const description = this.generateComponentDescription(dirName, files);
+                
+                components.push({
+                    name: componentName,
+                    description,
+                    files
+                });
+            }
+        }
+        
+        // Add uncategorized files if any
+        if (uncategorized.length > 0) {
+            components.push({
+                name: 'Root Level',
+                description: 'Top-level utility files and configurations',
+                files: uncategorized
+            });
+        }
+        
+        // Sort by number of files (descending)
+        components.sort((a, b) => b.files.length - a.files.length);
+        
         return components;
+    }
+    
+    private humanizeDirectoryName(dirName: string): string {
+        // Convert directory names to human-readable component names
+        return dirName
+            .split(/[-_]/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+    
+    private generateComponentDescription(dirName: string, files: string[]): string {
+        // Generate descriptions based on directory name and file patterns
+        const fileNames = files.map(f => f.toLowerCase());
+        
+        // Common patterns
+        if (dirName.includes('api') || dirName.includes('routes') || dirName.includes('controllers')) {
+            return 'API endpoints and request handlers';
+        }
+        if (dirName.includes('models') || dirName.includes('schema')) {
+            return 'Data models and database schemas';
+        }
+        if (dirName.includes('services') || dirName.includes('core')) {
+            return 'Business logic and core services';
+        }
+        if (dirName.includes('utils') || dirName.includes('helpers')) {
+            return 'Utility functions and helpers';
+        }
+        if (dirName.includes('auth') || dirName.includes('security')) {
+            return 'Authentication and security';
+        }
+        if (dirName.includes('tests') || dirName.includes('test')) {
+            return 'Test suites and test utilities';
+        }
+        if (dirName.includes('agents')) {
+            return 'AI agents and autonomous components';
+        }
+        if (dirName.includes('ui') || dirName.includes('views') || dirName.includes('components')) {
+            return 'User interface components';
+        }
+        if (dirName.includes('config')) {
+            return 'Configuration and settings';
+        }
+        if (dirName.includes('mcp-server') || dirName.includes('server')) {
+            return 'Server-side components and services';
+        }
+        
+        // Check file contents for hints
+        if (fileNames.some(f => f.includes('handler') || f.includes('controller'))) {
+            return 'Request handlers and controllers';
+        }
+        if (fileNames.some(f => f.includes('manager') || f.includes('service'))) {
+            return 'Management and service layer';
+        }
+        if (fileNames.some(f => f.includes('analyzer') || f.includes('parser'))) {
+            return 'Analysis and parsing logic';
+        }
+        
+        // Default description
+        return `${this.humanizeDirectoryName(dirName)} module`;
     }
 
     private analyzeComplexity(): ComplexityScore[] {
@@ -274,5 +357,20 @@ export class DependencyAnalyzer {
         }
 
         return recommendations;
+    }
+
+    private generateDependencyGraph(): Record<string, any> {
+        const graph: Record<string, any> = {};
+
+        for (const [filePath, metadata] of this.metadata) {
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            graph[normalizedPath] = {
+                exports: metadata.exports,
+                dependencies: metadata.dependencies,
+                dependents: Array.from(this.importMap.get(filePath) || new Set())
+            };
+        }
+
+        return graph;
     }
 }

@@ -5,6 +5,7 @@ import { SummaryPanel } from './summaryPanel';
 import { CodebaseAnalyzer } from './codebaseAnalyzer';
 import { CodeNavigationHandler } from './codeNavigationHandler';
 import { GitHookManager } from './gitHookManager';
+import { SummaryPreviewGenerator } from './summaryPreviewGenerator';
 
 let summaryTreeProvider: SummaryTreeProvider;
 
@@ -130,6 +131,29 @@ export async function activate(context: vscode.ExtensionContext) {
         });
     });
 
+    const previewFilesCommand = vscode.commands.registerCommand('luna-encyclopedia.previewFiles', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('No workspace folder open.');
+            return;
+        }
+
+        try {
+            const generator = new SummaryPreviewGenerator(workspaceFolder.uri.fsPath);
+            const previewPath = path.join(workspaceFolder.uri.fsPath, '.codebase', 'preview-included-files.txt');
+            
+            await generator.savePreview(previewPath);
+            
+            // Open the preview file
+            const doc = await vscode.workspace.openTextDocument(previewPath);
+            await vscode.window.showTextDocument(doc);
+            
+            vscode.window.showInformationMessage('✅ Preview generated! Check preview-included-files.txt');
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to generate preview: ${error}`);
+        }
+    });
+
     // Watch for file changes to refresh the tree
     const watcher = vscode.workspace.createFileSystemWatcher('**/*');
     watcher.onDidChange(() => summaryTreeProvider.refresh());
@@ -144,6 +168,7 @@ export async function activate(context: vscode.ExtensionContext) {
         refreshCommand,
         installGitHookCommand,
         summarizeFileCommand,
+        previewFilesCommand,
         treeView,
         uriHandler,
         watcher

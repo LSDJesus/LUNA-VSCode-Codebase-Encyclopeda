@@ -5,6 +5,10 @@ dist/
 *.vsix
 .vscode-test/
 
+# MCP Server - compiled JS should only be in dist/
+mcp-server/src/*.js
+mcp-server/src/*.js.map
+
 # Python
 .venv/
 venv/

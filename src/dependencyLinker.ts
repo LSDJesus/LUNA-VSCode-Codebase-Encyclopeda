@@ -68,11 +68,13 @@ export class DependencyLinker {
                 const sourceFile = metadata.sourceFile;
                 const usedBy = usedByMap.get(sourceFile) || [];
                 
-                // Update the summary with usedBy
-                metadata.summary.usedBy = usedBy;
-                
-                // Write back
-                fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2), 'utf-8');
+                // Update the summary with usedBy (skip if summary doesn't exist yet)
+                if (metadata.summary) {
+                    metadata.summary.usedBy = usedBy;
+                    
+                    // Write back
+                    fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2), 'utf-8');
+                }
             } catch (error) {
                 console.error(`Failed to update ${jsonPath}:`, error);
             }

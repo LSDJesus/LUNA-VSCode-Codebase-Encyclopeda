@@ -3,6 +3,7 @@
 src/**
 mcp-server/src/**
 mcp-server/tsconfig.json
+mcp-server/package-lock.json
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md
@@ -11,7 +12,7 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 !mcp-server/dist/**/*.js
-!resources/**
+!resources/templates/**
 .git/**
 *.vsix
 .github/**

@@ -29,7 +29,9 @@
     "context",
     "analysis"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -57,6 +59,11 @@
         "command": "luna-encyclopedia.summarizeFile",
         "title": "LUNA: Summarize This File",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "luna-encyclopedia.previewFiles",
+        "title": "LUNA: Preview Files to Summarize",
+        "icon": "$(preview)"
       },
       {
         "command": "luna-encyclopedia.installGitHook",

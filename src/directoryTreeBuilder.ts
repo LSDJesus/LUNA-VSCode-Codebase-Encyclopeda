@@ -57,7 +57,42 @@ export class DirectoryTreeBuilder {
             if (dirPath === workspacePath) continue;
 
             const parentPath = path.dirname(dirPath);
-            const parentNode = dirMap.get(parentPath);
+            let parentNode = dirMap.get(parentPath);
+            
+            // If parent doesn't exist, create it
+            if (!parentNode) {
+                const relDir = path.relative(workspacePath, parentPath);
+                const depth = relDir ? relDir.split(path.sep).length : 0;
+                parentNode = {
+                    path: parentPath,
+                    name: path.basename(parentPath),
+                    depth,
+                    files: [],
+                    subdirs: []
+                };
+                dirMap.set(parentPath, parentNode);
+                
+                // Recursively ensure all ancestors exist
+                if (parentPath !== workspacePath) {
+                    const grandparentPath = path.dirname(parentPath);
+                    let grandparentNode = dirMap.get(grandparentPath);
+                    if (!grandparentNode) {
+                        const relGrandDir = path.relative(workspacePath, grandparentPath);
+                        const grandDepth = relGrandDir ? relGrandDir.split(path.sep).length : 0;
+                        grandparentNode = {
+                            path: grandparentPath,
+                            name: path.basename(grandparentPath),
+                            depth: grandDepth,
+                            files: [],
+                            subdirs: []
+                        };
+                        dirMap.set(grandparentPath, grandparentNode);
+                    }
+                    if (!grandparentNode.subdirs.includes(parentNode)) {
+                        grandparentNode.subdirs.push(parentNode);
+                    }
+                }
+            }
 
             if (parentNode && !parentNode.subdirs.includes(node)) {
                 parentNode.subdirs.push(node);

@@ -284,6 +284,10 @@ export class CodebaseAnalyzer {
 
         // Get files in bottom-up order (deepest first)
         const orderedFiles = DirectoryTreeBuilder.getFilesBottomUp(tree);
+        
+        console.log('[LUNA DEBUG] Files after buildTree:', files.length);
+        console.log('[LUNA DEBUG] Files after getFilesBottomUp:', orderedFiles.length);
+        console.log('[LUNA DEBUG] Missing files:', files.filter(f => !orderedFiles.includes(f)).map(f => path.relative(workspaceFolder.uri.fsPath, f)));
 
         // Analyze files in parallel with configurable worker count
         const concurrentWorkers = vscode.workspace.getConfiguration('luna-encyclopedia')
@@ -370,48 +374,32 @@ export class CodebaseAnalyzer {
         const files: string[] = [];
         const includeMatcher = new SummaryIncludeMatcher(workspacePath);
         
-        // Get configured file types
+        // Get configured file type exclusions
         const config = vscode.workspace.getConfiguration('luna-encyclopedia');
-        const includeExtensions = config.get<string[]>('fileTypesToInclude', [
-            'ts', 'tsx', 'js', 'jsx', 'py', 'java', 'cs', 'go', 'rs', 'cpp', 'c', 'h', 'hpp'
-        ]);
         const excludePatterns = config.get<string[]>('fileTypesToExclude', [
             'd.ts', 'test.ts', 'spec.ts', 'test.js', 'spec.js', 'min.js', 'min.css'
         ]);
         
-        // Build include patterns from configured extensions
-        const includeGlobPatterns = includeExtensions.map(ext => `**/*.${ext}`);
+        // Walk directories specified in .lunasummarize (same approach as preview)
+        const dirs = includeMatcher.getIncludeDirectories();
+        console.log('[LUNA DEBUG] Include directories:', dirs);
+        
+        for (const dir of dirs) {
+            const fullPath = path.join(workspacePath, dir);
+            console.log('[LUNA DEBUG] Checking directory:', fullPath, 'Exists:', fs.existsSync(fullPath));
+            if (fs.existsSync(fullPath)) {
+                const beforeCount = files.length;
+                this.walkDirectory(fullPath, workspacePath, includeMatcher, excludePatterns, files);
+                console.log('[LUNA DEBUG] Added', files.length - beforeCount, 'files from', dir);
+            }
+        }
 
-        // Directories to exclude (baseline)
-        const excludeDirPatterns = [
-            '**/node_modules/**',
-            '**/.venv/**',
-            '**/venv/**',
-            '**/dist/**',
-            '**/build/**',
-            '**/out/**',
-            '**/__pycache__/**',
-            '**/.*',
-            '**/docs/**'
-        ];
-
-        for (const pattern of includeGlobPatterns) {
-            const foundFiles = await vscode.workspace.findFiles(pattern, `{${excludeDirPatterns.join(',')}}`);
-            for (const file of foundFiles) {
-                const filePath = file.fsPath;
-                const fileName = path.basename(filePath);
-                
-                // Check if file should be included (respects include section)
-                if (!includeMatcher.shouldInclude(filePath, workspacePath)) {
-                    continue;
-                }
-                
-                // Check against .lunasummarize exclude patterns
-                if (includeMatcher.shouldExclude(filePath, workspacePath)) {
-                    continue;
-                }
-                
-                // Check against file type exclusions
+        // Also include explicit files
+        const explicitFiles = includeMatcher.getIncludeFiles();
+        for (const file of explicitFiles) {
+            const fullPath = path.join(workspacePath, file);
+            if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+                const fileName = path.basename(fullPath);
                 let shouldExclude = false;
                 for (const excludePattern of excludePatterns) {
                     if (fileName.endsWith(excludePattern)) {
@@ -419,14 +407,59 @@ export class CodebaseAnalyzer {
                         break;
                     }
                 }
-                
-                if (!shouldExclude) {
-                    files.push(filePath);
+                if (!shouldExclude && !includeMatcher.shouldExclude(fullPath, workspacePath)) {
+                    files.push(fullPath);
                 }
             }
         }
 
-        return [...new Set(files)]; // Remove duplicates
+        console.log('[LUNA DEBUG] Total files discovered:', files.length);
+        return [...new Set(files)].sort(); // Remove duplicates and sort
+    }
+
+    private walkDirectory(
+        dirPath: string,
+        workspacePath: string,
+        includeMatcher: SummaryIncludeMatcher,
+        excludePatterns: string[],
+        results: string[]
+    ): void {
+        try {
+            const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+
+            for (const entry of entries) {
+                const fullPath = path.join(dirPath, entry.name);
+
+                if (entry.isDirectory()) {
+                    // Skip common build/dependency directories
+                    if (entry.name === 'node_modules' || entry.name === 'dist' || 
+                        entry.name === 'build' || entry.name === 'out' ||
+                        entry.name === '__pycache__' || entry.name.startsWith('.')) {
+                        continue;
+                    }
+                    this.walkDirectory(fullPath, workspacePath, includeMatcher, excludePatterns, results);
+                } else {
+                    // Check if file should be included
+                    if (includeMatcher.shouldInclude(fullPath, workspacePath)) {
+                        if (!includeMatcher.shouldExclude(fullPath, workspacePath)) {
+                            const fileName = path.basename(fullPath);
+                            let shouldExclude = false;
+                            for (const excludePattern of excludePatterns) {
+                                if (fileName.endsWith(excludePattern)) {
+                                    shouldExclude = true;
+                                    break;
+                                }
+                            }
+                            if (!shouldExclude) {
+                                results.push(fullPath);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            // Silently skip directories we can't read
+        }
     }
 
     private async analyzeSingleFile(
@@ -557,10 +590,12 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
         
         if (ext === '.py') {
             return `**Focus areas for Python files**:
-- Document class hierarchies (parent classes, mixins)
+- Document class hierarchies (parent classes, mixins) with line numbers
 - For Pydantic models: List all field names and their types with line numbers
 - Describe async functions and their role in the workflow
-- Note any decorators and what they do`;
+- Note any decorators and what they do
+- **CRITICAL**: Identify all imports, especially relative imports (from . import X, from .. import Y)
+- For each major function/class, note which imports it depends on`;
         } else if (ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx') {
             return `**Focus areas for TypeScript/JavaScript files**:
 - Document React component props and state (if applicable)

@@ -96,7 +96,9 @@ export class StaticImportAnalyzer {
                 
                 // Relative imports (from . or from ..)
                 if (module.startsWith('.')) {
-                    const sourceDir = path.dirname(filePath);
+                    // filePath should be workspace-relative, but ensure it's treated correctly
+                    const absoluteFilePath = path.isAbsolute(filePath) ? filePath : path.join(workspacePath, filePath);
+                    const sourceDir = path.dirname(absoluteFilePath);
                     const resolvedPath = this.resolvePythonRelativeImport(sourceDir, module, workspacePath);
                     internal.push({
                         path: resolvedPath,
@@ -345,9 +347,18 @@ export class StaticImportAnalyzer {
         const levels = module.match(/^\.*/)![0].length;
         const moduleName = module.substring(levels);
         
-        let targetDir = sourceDir;
+        // Ensure sourceDir is absolute
+        const absoluteSourceDir = path.isAbsolute(sourceDir) ? sourceDir : path.join(workspacePath, sourceDir);
+        
+        let targetDir = absoluteSourceDir;
+        // Navigate up the directory tree (levels - 1 times, since one dot means "current directory")
         for (let i = 1; i < levels; i++) {
             targetDir = path.dirname(targetDir);
+            // Safety: don't go above workspace
+            if (!targetDir.startsWith(workspacePath)) {
+                targetDir = workspacePath;
+                break;
+            }
         }
         
         const resolvedPath = moduleName ? path.join(targetDir, moduleName.replace(/\./g, '/')) : targetDir;
