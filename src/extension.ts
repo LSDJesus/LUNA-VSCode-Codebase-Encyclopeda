@@ -259,8 +259,12 @@ async function registerMCPServer(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration();
     const mcpServers = config.get<Record<string, any>>('mcp.servers', {});
 
-    // Check if LUNA MCP server is already registered
-    if (!mcpServers['lunaEncyclopedia']) {
+    // Check if LUNA MCP server needs registration or update
+    const existingServer = mcpServers['lunaEncyclopedia'];
+    const needsUpdate = !existingServer || 
+                       existingServer.args?.[0] !== mcpServerPath;
+
+    if (needsUpdate) {
         try {
             await config.update('mcp.servers', {
                 ...mcpServers,
@@ -271,14 +275,20 @@ async function registerMCPServer(context: vscode.ExtensionContext) {
                 }
             }, vscode.ConfigurationTarget.Global);
 
-            vscode.window.showInformationMessage(
-                '✅ LUNA MCP Server registered! Copilot Agent Mode can now query your codebase summaries.',
-                'Open Copilot Chat'
-            ).then(selection => {
-                if (selection === 'Open Copilot Chat') {
-                    vscode.commands.executeCommand('workbench.panel.chat.view.copilot.focus');
-                }
-            });
+            if (!existingServer) {
+                // First-time registration
+                vscode.window.showInformationMessage(
+                    '✅ LUNA MCP Server registered! Copilot Agent Mode can now query your codebase summaries.',
+                    'Open Copilot Chat'
+                ).then(selection => {
+                    if (selection === 'Open Copilot Chat') {
+                        vscode.commands.executeCommand('workbench.panel.chat.view.copilot.focus');
+                    }
+                });
+            } else {
+                // Updated to new version
+                console.log('LUNA MCP server path updated to:', mcpServerPath);
+            }
         } catch (error) {
             console.error('Failed to register LUNA MCP server:', error);
             vscode.window.showWarningMessage(

@@ -5,6 +5,14 @@ All notable changes to the LUNA Codebase Encyclopedia extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-12-30
+
+### Fixed
+- **MCP Server Auto-Update**: Extension now automatically updates MCP server path when upgrading versions
+  - Fixes issue where MCP server still pointed to old version after extension update
+  - MCP server path now dynamically updates to match installed extension version
+  - No manual configuration needed after updates
+
 ## [1.1.0] - 2025-12-29
 
 ### Added - Major Features 🎉
