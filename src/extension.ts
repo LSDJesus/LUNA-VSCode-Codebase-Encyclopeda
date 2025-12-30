@@ -6,6 +6,7 @@ import { CodebaseAnalyzer } from './codebaseAnalyzer';
 import { CodeNavigationHandler } from './codeNavigationHandler';
 import { GitHookManager } from './gitHookManager';
 import { SummaryPreviewGenerator } from './summaryPreviewGenerator';
+import { CodeBreakdownGenerator } from './codeBreakdownGenerator';
 
 let summaryTreeProvider: SummaryTreeProvider;
 
@@ -154,6 +155,54 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Generate detailed code breakdown
+    const generateBreakdownCommand = vscode.commands.registerCommand('luna-encyclopedia.generateBreakdown', async (fileUri?: vscode.Uri) => {
+        // Get file from context menu or active editor
+        let targetUri = fileUri;
+        if (!targetUri) {
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor) {
+                targetUri = activeEditor.document.uri;
+            }
+        }
+
+        if (!targetUri) {
+            vscode.window.showErrorMessage('No file selected. Right-click a file or open one in the editor.');
+            return;
+        }
+
+        const filePath = targetUri.fsPath;
+        const fileName = path.basename(filePath);
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Generating code breakdown for ${fileName}...`,
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                const breakdownGenerator = new CodeBreakdownGenerator(context);
+                
+                progress.report({ message: '🚀 Starting breakdown generation...' });
+                
+                const breakdown = await breakdownGenerator.generateBreakdown(filePath, progress, token);
+                const savedPath = await breakdownGenerator.saveBreakdown(filePath, breakdown);
+                
+                // Open the breakdown file
+                const doc = await vscode.workspace.openTextDocument(savedPath);
+                await vscode.window.showTextDocument(doc, { preview: false });
+                
+                const verbosity = vscode.workspace.getConfiguration('luna-encyclopedia').get<string>('breakdownVerbosity', 'intermediate');
+                vscode.window.showInformationMessage(`✅ Code breakdown generated (${verbosity} mode)! See ${path.basename(savedPath)}`);
+            } catch (error) {
+                if (token.isCancellationRequested) {
+                    vscode.window.showInformationMessage('Breakdown generation cancelled.');
+                } else {
+                    vscode.window.showErrorMessage(`Failed to generate breakdown: ${error}`);
+                }
+            }
+        });
+    });
+
     // Watch for file changes to refresh the tree
     const watcher = vscode.workspace.createFileSystemWatcher('**/*');
     watcher.onDidChange(() => summaryTreeProvider.refresh());
@@ -169,6 +218,7 @@ export async function activate(context: vscode.ExtensionContext) {
         installGitHookCommand,
         summarizeFileCommand,
         previewFilesCommand,
+        generateBreakdownCommand,
         treeView,
         uriHandler,
         watcher

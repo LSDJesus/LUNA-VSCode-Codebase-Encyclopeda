@@ -124,8 +124,16 @@ export class DependencyAnalyzer {
                         if (summary.publicAPI && summary.dependencies) {
                             const relPath = content.sourceFile || path.relative(codebasePath, filePath).replace(/\.json$/, '');
                             const exports = summary.publicAPI.map((api: any) => api.signature?.split('(')[0]?.trim() || '').filter(Boolean);
-                            const internalDeps = (summary.dependencies.internal || []).map((dep: any) => dep.path || dep);
-                            const externalDeps = (summary.dependencies.external || []).map((dep: any) => dep.path || dep.package || dep);
+                            const internalDeps = (summary.dependencies.internal || []).map((dep: any) => {
+                                if (typeof dep === 'string') return dep;
+                                if (dep && typeof dep === 'object' && dep.path) return String(dep.path);
+                                return String(dep || '');
+                            }).filter(Boolean);
+                            const externalDeps = (summary.dependencies.external || []).map((dep: any) => {
+                                if (typeof dep === 'string') return dep;
+                                if (dep && typeof dep === 'object') return String(dep.path || dep.package || dep.name || '');
+                                return String(dep || '');
+                            }).filter(Boolean);
                             
                             const metadata: FileMetadata = {
                                 filePath: relPath,
@@ -170,9 +178,10 @@ export class DependencyAnalyzer {
             for (const exportName of metadata.exports) {
                 // Check if this export is used anywhere
                 const isUsed = Array.from(this.metadata.values()).some(m => 
-                    m.dependencies.internal.some(dep => 
-                        dep.includes(exportName) || dep.includes(filePath)
-                    )
+                    m.dependencies.internal.some(dep => {
+                        const depStr = typeof dep === 'string' ? dep : String(dep || '');
+                        return depStr.includes(exportName) || depStr.includes(filePath);
+                    })
                 );
 
                 if (!isUsed && exportName !== 'activate' && exportName !== 'deactivate') {

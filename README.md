@@ -1,10 +1,13 @@
 # LUNA Codebase Encyclopedia
 
-🚀 **Agent-First Context API** - Generate structured summaries of your codebase for instant, zero-token Copilot Agent queries.
+🚀 **Agent-First Context API** - Generate structured summaries of your codebase for instant, zero-token Copilot Agent queries, plus educational code breakdowns for learning.
 
 ## What It Does
 
-LUNA analyzes your code and generates **structured summaries** (Markdown + JSON) that Copilot agents can query instantly without burning tokens.
+LUNA analyzes your code and generates **two types of documentation**:
+
+### 1. Encyclopedia Summaries (For AI Agents)
+Structured summaries (Markdown + JSON) that Copilot agents can query instantly without burning tokens.
 
 ```
 1. Generate summaries once → Structured MD + JSON in .codebase/
@@ -13,13 +16,24 @@ LUNA analyzes your code and generates **structured summaries** (Markdown + JSON)
 4. Copilot queries summaries (instant, zero tokens!) ✨
 ```
 
+### 2. Code Breakdowns (For YOU - New!)
+Line-by-line educational explanations that teach you how your code works. Perfect for onboarding or learning new codebases.
+
+```
+Right-click any file → "LUNA: Explain This Code"
+→ Generates detailed breakdown with explanations, examples, and gotchas
+→ Adjustable verbosity (Beginner/Intermediate/Expert)
+```
+
 **What you get:**
 - 📝 Human-readable markdown summaries with line numbers
 - 🤖 Machine-readable JSON for AI agent queries  
+- 📚 Educational code breakdowns (NEW!)
 - 🔗 Bidirectional dependency graphs ("uses X" + "used by Y")
 - 📊 Code complexity analysis + refactoring guidance
-- 🧹 Dead code detection
-- 🏗️ Architecture component mapping
+- 🧹 Dead code detection with AI verification (NEW!)
+- 🏗️ Smart architecture component mapping
+- ✅ Quality assurance reviews (NEW!)
 
 ## Quick Start
 
@@ -41,7 +55,14 @@ Ask: "What's the architecture?" or "Which files are most complex?"
 Copilot instantly answers from your summaries
 ```
 
-### 4. Keep Summaries Fresh
+### 4. Learn Your Code (NEW!)
+```
+Right-click any file → "LUNA: Explain This Code"
+Choose verbosity: Beginner (full detail) / Intermediate / Expert
+Get a complete educational breakdown saved as filename.breakdown.md
+```
+
+### 5. Keep Summaries Fresh
 ```
 After committing code changes:
 Command Palette → "LUNA: Update Stale Summaries"
@@ -85,20 +106,90 @@ This protocol maximizes efficiency and accuracy.
 **How to use**:
 - Create a file: `.github/copilot-instructions.md` and paste the protocol there (VS Code workspace standard!)
 - Or create a custom Copilot agent with these instructions
-- Or add to your personal system prompt
-- Share with your team for consistent behavior
+- OrCode Breakdowns (NEW! - Educational Feature)
+Generate detailed, educational explanations of your code:
+```
+Right-click file → "LUNA: Explain This Code"
+```
 
-**Pro tip**: After setup, ask Copilot "Are my summaries up to date?" to see LUNA in action! 🎯
+**Verbosity Levels:**
+- **Beginner** 📚: Full code included, line-by-line explanations, analogies, diagrams, common mistakes
+- **Intermediate** 📖: Key snippets, clear explanations, patterns, and gotchas
+- **Expert** ⚡: Architecture, design decisions, tricky sections only
 
-## Advanced Features
+**Output:** `filename.breakdown.md` - A complete learning document with:
+- Table of contents
+- Sectioned explanations (imports, classes, functions)
+- Code snippets with annotations
+- Real-world analogies and examples
+- Common mistakes and gotchas
+
+Perfect for onboarding new developers or learning unfamiliar code!
+
+### Quality Assurance Reviews (NEW!)
+After fast deterministic analysis, Copilot validates the results:
+
+**Enabled by default** - Configure in Settings → `Enable Copilot QA`
+
+**What gets reviewed:**
+- ✅ Dead code detection (reduces false positives)
+- ✅ Complexity scores (validates against actual patterns)
+- ✅ Component categorization (checks groupings make sense)
+
+**Results saved to:** `.codebase/QA_REPORT.json`
+
+**Benefits:**
+- Fewer false positive "dead code" warnings
+- Framework-aware (ComfyUI, Django, FastAPI, etc.)
+- More accurate refactoring recommendations
 
 ### Dead Code Analysis
-Find unused exports:
+Find unused exports with AI verifi
+
+## Settings
+
+Configure LUNA in VS Code Settings → Extensions → LUNA Encyclopedia:
+
+**Analysis Settings:**
+- **Copilot Model**: Choose which model to use (default: gpt-4o - FREE)
+- **Concurrent Workers**: Parallel analysis (1-20, default: 5)
+- **Max File Size**: Skip files larger than this (default: 500KB)
+- **Enable Copilot QA**: AI reviews deterministic analysis (default: ON) ✨
+
+**Breakdown Settings (NEW!):**
+- **Breakdown Verbosity**: How detailed code explanations should be
+  - Beginner: Full detail with analogies and examples
+  - Intermediate: Balanced explanations (default)
+  - Expertile.breakdown.md`** - Educational code breakdown (NEW! - for learning) 📚
+- **`src/foldername.index.md`** - Directory index with file listings
+- **`src/foldername.index.json`** - Directory index (machine-readable)
+
+### Meta-Analysis Files
+- **`complexity-heatmap.json`** - File complexity scores (0-10) with QA validation
+- **`component-map.json`** - Smart architectural grouping with QA review
+- **`dependency-graph.json`** - Full dependency relationships
+- **`dead-code-analysis.json`** - Unused exports with false positive detection
+- **`QA_REPORT.json`** - Quality assurance validation results (NEW!) ✨
+- **`SUMMARY_REPORT.md`** - Human-readable overview of issues
+**Advanced:**
+- **Branch Aware Summaries**: Separate summaries per git branch
+- **File Types**: Which extensions to include/excludecation:
 ```
 .codebase/dead-code-analysis.json
 ```
 
+Now includes `qaReviewed` and `falsePositives` count!
+
 ### Complexity Heatmap  
+Refactoring candidates with AI-validated scores (0-10):
+```
+.codebase/complexity-heatmap.json
+```
+- 🔴 8-10: Needs refactoring
+- ⚠️ 6-7: Monitor quality
+- ✅ 0-5: Good
+
+Now includes QA adjustments for better accuracy!y Heatmap  
 Refactoring candidates (scores 0-10):
 ```
 .codebase/complexity-heatmap.json
@@ -123,13 +214,37 @@ Copy to `.codebase/.luna-template.json` to enable.
 
 1. Install from VS Code Marketplace
 2. MCP server auto-registers on first activation ✅
-3. No manual configuration needed!
+3. NEducational code breakdowns (NEW!)
+- ✅ AI quality assurance reviews (NEW!)
+- ✅ Bidirectional dependency tracking
+- ✅ Complexity heatmap for refactoring guidance
+- ✅ Dead code analysis with false positive detection
+- ✅ Smart architecture component mapping
+- ✅ Custom templates for domain-specific analysis
+- ✅ Right-click file summarization
+- ✅ Python-specific improvements (import resolution, relative paths)
+- ⚡ Performance optimizations ongoing
 
-## Cost
+## Recent Updates (v1.1.0) 🎉
 
-- **Free**: Uses `gpt-4o` (standard Copilot model, no premium charges)
-- **Optional**: Configure different models in settings if preferred
+### Major New Feature
+🆕 **Code Breakdown Generator** - Revolutionary educational feature that generates line-by-line explanations  
+   - 3 verbosity levels: Beginner (full detail) / Intermediate / Expert
+   - Multi-agent pipeline ensures accuracy
+   - Perfect for onboarding or learning unfamiliar code
+   - Output: `filename.breakdown.md` with TOC, examples, and gotchas
 
+### Quality & Accuracy Improvements
+🆕 **Quality Assurance Validator** - AI reviews deterministic analysis for accuracy  
+   - Validates dead code detection (reduces false positives)
+   - Verifies complexity scores against actual patterns
+   - Framework-aware analysis
+
+### Technical Enhancements
+🔧 **Python Improvements** - Better relative import resolution and component categorization  
+🔧 **Enhanced Prompts** - More accurate function call tracking and conservative line numbers  
+🔧 **Dependency Type Safety** - Handles mixed dependency formats correctly  
+🔧 **Smart Component Grouping** - Auto-detects project structure instead of hardcoded categories
 ---
 
 ## Generated Files & Analysis

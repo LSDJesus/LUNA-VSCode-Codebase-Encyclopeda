@@ -68,6 +68,14 @@ LUNA will analyze your codebase (this may take a few minutes for large projects)
 - "Which files handle user authentication?"
 - "Show me the dependency graph for [filename]"
 - "Are any summaries out of date?"
+- "What are the most complex files?" (uses QA-validated scores!)
+- "Are there any false positives in the dead code analysis?"
+
+### Try the NEW Learning Features:
+
+- Right-click any file → **"LUNA: Explain This Code"**
+- Choose verbosity level in Settings (Beginner/Intermediate/Expert)
+- Get detailed educational breakdowns saved as `.breakdown.md` files
 
 ---
 
@@ -76,7 +84,13 @@ LUNA will analyze your codebase (this may take a few minutes for large projects)
 - Review `.codebase/LUNA_INSTRUCTIONS.md` for complete documentation
 - Edit `.codebase/.lunasummarize` to customize what gets analyzed
 - Run **"LUNA: Update Stale Summaries"** after making code changes
+- Configure settings: Extensions → LUNA Encyclopedia
+  - Enable/disable Copilot QA reviews
+  - Set breakdown verbosity level
+  - Adjust concurrent workers for speed
 
 ---
 
 **Pro Tip**: Keep summaries fresh by running "Update Stale Summaries" after each coding session. It only regenerates changed files!
+
+**Learning Tip**: Use "Explain This Code" on unfamiliar files to get line-by-line educational breakdowns - perfect for onboarding!

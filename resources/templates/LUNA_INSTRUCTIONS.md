@@ -2,21 +2,32 @@
 
 ## What is LUNA?
 
-LUNA is an **Agent-First Context API** that generates structured summaries of your codebase for AI agents (like Copilot Agent Mode) to query instantly without burning tokens.
+LUNA is an **Agent-First Context API** that generates:
+1. **Structured summaries** for AI agents (instant, zero-token queries)
+2. **Educational code breakdowns** for human learning (NEW!)
 
 ## How to Use
 
-### 1. Generate Summaries
+### 1. Generate Encyclopedia Summaries
 - Command: **"LUNA: Generate Codebase Summaries"**
 - Analyzes all files matching your include/exclude criteria
 - Creates summaries in this directory (.codebase/)
+- **NEW**: Includes AI quality assurance reviews for accuracy
 
-### 2. Update Stale Summaries
+### 2. Learn Your Code (NEW!)
+- Right-click any file → **"LUNA: Explain This Code"**
+- Choose verbosity level in Settings:
+  - **Beginner** 📚: Full explanations with analogies and examples
+  - **Intermediate** 📖: Balanced detail (default)
+  - **Expert** ⚡: Quick architecture overview
+- Generates `filename.breakdown.md` with line-by-line educational content
+
+### 3. Update Stale Summaries
 - Command: **"LUNA: Update Stale Summaries"**
 - Only regenerates files that have changed (git-aware)
 - Use after each coding session
 
-### 3. Query with Copilot Agent Mode
+### 4. Query with Copilot Agent Mode
 - Open Copilot Chat (Cmd+I)
 - Toggle **Agent Mode** (top right)
 - Ask naturally:
@@ -24,13 +35,15 @@ LUNA is an **Agent-First Context API** that generates structured summaries of yo
   - "Which files import summaryPanel?"
   - "Show me the architecture"
   - "Are any summaries out of date?"
+  - "What are the most complex files?" (uses QA-validated scores!)
+  - "Are there false positives in dead code analysis?"
 
-### 4. Navigate to Code
+### 5. Navigate to Code
 - Agent references exact line numbers (e.g., "lines 10-25")
 - Click links in responses → editor jumps to that location
 - Bidirectional dependencies: "used by" shows reverse imports
 
-### 5. Maintenance & Staleness
+### 6. Maintenance & Staleness
 - If you detect that a file has been modified but its summary is stale (check `list_stale_summaries`), **inform the user**.
 - After performing a significant refactor, **explicitly suggest** that the user runs the **"LUNA: Summarize File"** command (or "Update Stale Summaries") to keep your context accurate.
 - Do not attempt to summarize files yourself; rely on the extension's specialized generation logic to maintain consistency.
@@ -38,10 +51,16 @@ LUNA is an **Agent-First Context API** that generates structured summaries of yo
 ## Configuration
 
 Edit **.lunasummarize** in this directory to customize:
+- Which directories to include (opt-in model)
 - Which file types to include (extensions)
-- Which directories/files to exclude
-- Maximum file size to analyze
-- Verbosity
+- Which patterns to exclude
+- See .lunasummarize for full documentation
+
+**Global Settings** (in VS Code):
+- Enable/disable Copilot QA reviews
+- Breakdown verbosity level (Beginner/Intermediate/Expert)
+- Concurrent workers for speed
+- Max file size limit
 
 ## File Structure
 
@@ -50,7 +69,12 @@ Edit **.lunasummarize** in this directory to customize:
 - **.lunasummarize** - Configuration file (customize this!)
 - **src/file.md** - Human-readable summary (Markdown)
 - **src/file.json** - Machine-readable summary (JSON)
+- **src/file.breakdown.md** - Educational code breakdown (NEW!)
 - **src/INDEX.md** - Directory index with file listings
+- **complexity-heatmap.json** - QA-validated complexity scores (NEW!)
+- **dead-code-analysis.json** - Unused exports with false positive detection (NEW!)
+- **component-map.json** - Smart architecture grouping (NEW!)
+- **QA_REPORT.json** - Quality assurance validation results (NEW!)
 - **INDEX.md** - Root index for navigation
 
 ## MCP Tools Available

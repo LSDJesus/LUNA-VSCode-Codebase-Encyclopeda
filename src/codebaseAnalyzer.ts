@@ -10,6 +10,7 @@ import { ConcurrencyLimiter } from './concurrencyLimiter';
 import { GitBranchDetector } from './gitBranchDetector';
 import { StaticImportAnalyzer } from './staticImportAnalyzer';
 import { DependencyAnalyzer } from './dependencyAnalyzer';
+import { QualityAssuranceValidator } from './qualityAssuranceValidator';
 
 interface FileSummary {
     purpose: string;
@@ -356,6 +357,12 @@ export class CodebaseAnalyzer {
         const analyzer = new DependencyAnalyzer();
         await analyzer.analyze(workspaceFolder.uri.fsPath);
 
+        // Run Copilot QA on analysis results (if enabled)
+        if (QualityAssuranceValidator.isEnabled(workspaceFolder.uri.fsPath)) {
+            progress.report({ message: 'Running Copilot QA review...' });
+            await this.runQualityAssurance(workspaceFolder.uri.fsPath, codebasePath, progress);
+        }
+
         // Generate issues report
         progress.report({ message: 'Generating summary report...' });
         const reportPath = path.join(codebasePath, 'SUMMARY_REPORT.md');
@@ -514,7 +521,11 @@ export class CodebaseAnalyzer {
 
 **File**: \`${relPath}\`
 
-**CRITICAL**: For EVERY component, function, class, and API, you MUST include the exact line numbers where they appear in the source code. Use the format "lines": "123-168" for ranges or "lines": "42" for single lines.
+**CRITICAL**: For EVERY component, function, class, and API, you MUST include line numbers where they appear. BUT:
+- Only include line numbers if you are CERTAIN (90%+ confident)
+- If unsure about exact lines, omit the "lines" field rather than guessing
+- Use the format "lines": "123-168" for ranges or "lines": "42" for single lines
+- For class definitions, include the ENTIRE class body range (from class keyword to last method)
 
 **Note**: Dependencies (imports) will be automatically extracted via static analysis. Focus on providing rich insights about purpose, components, public API, and implementation details.
 
@@ -548,7 +559,18 @@ ${languageHints}
   "codeLinks": [
     {"symbol": "main_function", "path": "${relPath}", "lines": "100-120"}
   ],
-  "implementationNotes": "Important patterns, algorithms, or gotchas"
+  "implementationNotes": "Important patterns, algorithms, or gotchas",
+  "functionCalls": [
+    {"function": "patch_get_output_data", "calledFrom": "process_node", "lines": "42-50"},
+    {"function": "create_patch_unet_model__forward", "calledFrom": "initialize", "lines": "15-20"}
+  ],
+  "fileLevelMetadata": {
+    "exportedItemCount": 5,
+    "nodeCount": 1,
+    "hasClasses": true,
+    "hasFunctions": true,
+    "complexity": "high/medium/low"
+  }
 }
 \`\`\`
 
@@ -574,6 +596,10 @@ One concise paragraph.
 
 ## Implementation Notes
 Important details.
+
+## Function Calls
+- \`patch_get_output_data()\` - Called from \`process_node()\` at lines 42-50
+- \`create_patch_unet_model__forward()\` - Called from \`initialize()\` at lines 15-20
 \`\`\`
 
 **Source code**:
@@ -582,7 +608,11 @@ ${truncatedContent}
 \`\`\`
 ${customTemplate}
 
-Generate the analysis now. Be precise and focus on information useful for AI codebase navigation.`;
+**Important**: Be thorough in identifying:
+1. EVERY function/class call made in this file (don't just mention "relies on utilities", list each one)
+2. Structural metadata (number of exports, main components, overall complexity)
+
+**DO NOT attempt to identify unused imports** - this will be detected via static analysis instead. Focus on SEMANTIC understanding of code purpose and relationships.`;
     }
     
     private getLanguageHints(fileExt: string): string {
@@ -590,24 +620,31 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
         
         if (ext === '.py') {
             return `**Focus areas for Python files**:
-- Document class hierarchies (parent classes, mixins) with line numbers
+- Document class hierarchies (parent classes, mixins) with line numbers (be conservative with ranges)
 - For Pydantic models: List all field names and their types with line numbers
 - Describe async functions and their role in the workflow
 - Note any decorators and what they do
-- **CRITICAL**: Identify all imports, especially relative imports (from . import X, from .. import Y)
-- For each major function/class, note which imports it depends on`;
+- **DETAILED FUNCTION CALLS**: List EVERY function/class that this file calls (e.g., "calls patch_get_output_data() at line 42, calls create_patch_unet_model__forward() at line 15")
+- Explicitly state: number of classes, number of functions, overall complexity
+- If file contains a single node/class: explicitly state "Contains only one X"
+- For framework-specific patterns (decorators, magic methods): note that these are framework features, not unused code`;
         } else if (ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx') {
             return `**Focus areas for TypeScript/JavaScript files**:
 - Document React component props and state (if applicable)
 - Note any hooks usage (useState, useEffect, custom hooks)
 - Describe exported functions, classes, and types
-- Mention any important type definitions`;
+- **DETAILED FUNCTION CALLS**: List every imported function that is actually used (e.g., "calls useEffect at line 50, calls useState at line 45")
+- Mention any important type definitions
+- Count of exports and structural metadata
+- Use line numbers conservatively - only when 100% confident`;
         } else if (ext === '.java' || ext === '.cs') {
             return `**Focus areas for ${ext === '.java' ? 'Java' : 'C#'} files**:
 - Document class hierarchy and interfaces implemented
 - List public methods with their signatures
 - Note any annotations/attributes and their purpose
-- Describe design patterns used`;
+- Describe design patterns used
+- List all method calls to external classes
+- Use line numbers conservatively`;
         }
         
         return '';
@@ -912,5 +949,78 @@ Generate the analysis now. Be precise and focus on information useful for AI cod
             throw error;
         }
     }
-}
 
+    /**
+     * Run Copilot QA on deterministic analysis results
+     */
+    private async runQualityAssurance(
+        workspacePath: string,
+        codebasePath: string,
+        progress: vscode.Progress<{ message?: string; increment?: number }>
+    ): Promise<void> {
+        try {
+            const qaValidator = new QualityAssuranceValidator();
+
+            // Load analysis files
+            const deadCodePath = path.join(codebasePath, 'dead-code-analysis.json');
+            const complexityPath = path.join(codebasePath, 'complexity-heatmap.json');
+            const componentPath = path.join(codebasePath, 'component-map.json');
+
+            let deadCodeQA: any[] = [];
+            let complexityQA: any[] = [];
+            let componentQA: any = { verified: false, confidence: 0, issues: [], corrections: {} };
+
+            // QA Dead Code Analysis
+            if (fs.existsSync(deadCodePath)) {
+                const deadCodeAnalysis = JSON.parse(fs.readFileSync(deadCodePath, 'utf-8'));
+                if (deadCodeAnalysis.orphanedExports && deadCodeAnalysis.orphanedExports.length > 0) {
+                    deadCodeQA = await qaValidator.validateDeadCode(deadCodeAnalysis, workspacePath, progress);
+                    
+                    // Update the analysis file with QA results
+                    deadCodeAnalysis.qaReviewed = true;
+                    deadCodeAnalysis.qaResults = deadCodeQA;
+                    deadCodeAnalysis.falsePositives = deadCodeQA.filter(r => !r.verifiedUnused).length;
+                    fs.writeFileSync(deadCodePath, JSON.stringify(deadCodeAnalysis, null, 2), 'utf-8');
+                }
+            }
+
+            // QA Complexity Scores
+            if (fs.existsSync(complexityPath)) {
+                const complexityHeatmap = JSON.parse(fs.readFileSync(complexityPath, 'utf-8'));
+                complexityQA = await qaValidator.validateComplexity(complexityHeatmap, workspacePath, progress);
+                
+                // Update the analysis file with QA results
+                complexityHeatmap.qaReviewed = true;
+                complexityHeatmap.qaResults = complexityQA;
+                fs.writeFileSync(complexityPath, JSON.stringify(complexityHeatmap, null, 2), 'utf-8');
+            }
+
+            // QA Component Categorization
+            if (fs.existsSync(componentPath)) {
+                const componentMap = JSON.parse(fs.readFileSync(componentPath, 'utf-8'));
+                componentQA = await qaValidator.validateComponentMap(componentMap, workspacePath, progress);
+                
+                // Update the analysis file with QA results
+                componentMap.qaReviewed = true;
+                componentMap.qaResult = componentQA;
+                fs.writeFileSync(componentPath, JSON.stringify(componentMap, null, 2), 'utf-8');
+            }
+
+            // Write consolidated QA report
+            QualityAssuranceValidator.writeQAReport(workspacePath, deadCodeQA, complexityQA, componentQA);
+
+            // Show summary
+            const falsePositives = deadCodeQA.filter(r => !r.verifiedUnused).length;
+            const adjustments = complexityQA.filter(r => r.originalScore !== r.adjustedScore).length;
+            
+            if (falsePositives > 0 || adjustments > 0) {
+                vscode.window.showInformationMessage(
+                    `🔍 QA Review: Found ${falsePositives} false positive dead code alerts, ${adjustments} complexity adjustments. See QA_REPORT.json for details.`
+                );
+            }
+        } catch (error) {
+            console.error('QA validation failed:', error);
+            // Non-fatal - continue with the rest of the process
+        }
+    }
+}
