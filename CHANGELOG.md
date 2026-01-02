@@ -4,6 +4,43 @@ All notable changes to the LUNA Codebase Encyclopedia extension will be document
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.1.3] - 2025-12-30
+
+### Removed
+- **Git Post-Commit Hook Command**: Removed `LUNA: Install Git Post-Commit Hook` command
+  - Universal Git Commit Watcher now covers all commit sources (terminal, GitHub extension, VS Code UI, etc.)
+  - Hook installation is no longer necessary
+  - Cleaner, simpler user experience
+
+### Changed
+- Documentation updated to reflect universal watcher as the primary commit detection method
+- Removed GitHookManager dependency from extension core
+
+## [1.1.2] - 2025-12-30
+
+### Added
+- **Universal Git Commit Watcher**: Detects commits from ANY source
+  - Terminal commits
+  - GitHub VSCode extension
+  - VS Code Source Control UI
+  - Git GUI clients
+  - Any other git tool
+- Auto-detects stale summaries after any commit type
+## [1.1.2] - 2025-12-30
+
+### Added - Major Feature 🎉
+- **Universal Git Commit Watcher**: Detects commits from ANY source (terminal, GitHub extension, VS Code UI, etc.)
+  - Watches `.git/refs/` directory for changes instead of relying on git hooks
+  - Works with terminal commits, GitHub VSCode extension, git GUI clients, and more
+  - Auto-detects stale summaries after any commit
+  - Shows intuitive notification: "📝 X summaries may be outdated"
+  - User can click to update or dismiss
+  - Silent updates - no spam notifications
+
+### Fixed
+- **Git Hook Behavior**: Clarified that git hooks only work with terminal `git commit` commands
+  - Added alternative: Universal watcher catches commits from all sources
+  - Documentation now explains the difference
 
 ## [1.1.1] - 2025-12-30
 
@@ -93,11 +130,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown and JSON summary generation
 - Line number tracking in summaries
 - MCP server for Copilot Agent Mode
-- Git post-commit hook support
 - Staleness detection for incremental updates
 
 ---
 
+[1.1.3]: https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda/compare/v1.1.2...v1.1.3
+[1.1.2]: https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda/compare/v1.1.1...v1.1.2
+[1.1.1]: https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda/compare/v1.0.8...v1.1.0
 [1.0.8]: https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda/compare/v1.0.0...v1.0.8
 [1.0.0]: https://github.com/LSDJesus/LUNA-VSCode-Codebase-Encyclopeda/releases/tag/v1.0.0

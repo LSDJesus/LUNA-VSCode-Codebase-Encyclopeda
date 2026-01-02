@@ -4,11 +4,12 @@ import { SummaryTreeProvider } from './summaryTreeProvider';
 import { SummaryPanel } from './summaryPanel';
 import { CodebaseAnalyzer } from './codebaseAnalyzer';
 import { CodeNavigationHandler } from './codeNavigationHandler';
-import { GitHookManager } from './gitHookManager';
 import { SummaryPreviewGenerator } from './summaryPreviewGenerator';
 import { CodeBreakdownGenerator } from './codeBreakdownGenerator';
+import { GitCommitWatcher } from './gitCommitWatcher';
 
 let summaryTreeProvider: SummaryTreeProvider;
+let gitCommitWatcher: GitCommitWatcher | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('LUNA Codebase Encyclopedia is now active');
@@ -22,6 +23,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register URI handler for code navigation
     const uriHandler = CodeNavigationHandler.register(context);
+
+    // Start git commit watcher (works with terminal, GitHub extension, etc.)
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (workspaceFolder) {
+        gitCommitWatcher = new GitCommitWatcher(workspaceFolder.uri.fsPath);
+        gitCommitWatcher.start();
+    }
 
     // Register tree view
     const treeView = vscode.window.registerTreeDataProvider('luna-encyclopedia.summaryTree', summaryTreeProvider);
@@ -79,20 +87,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const refreshCommand = vscode.commands.registerCommand('luna-encyclopedia.refreshTree', () => {
         summaryTreeProvider.refresh();
-    });
-
-    const installGitHookCommand = vscode.commands.registerCommand('luna-encyclopedia.installGitHook', async () => {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            vscode.window.showErrorMessage('No workspace folder open.');
-            return;
-        }
-
-        try {
-            await GitHookManager.installPostCommitHook(workspaceFolder.uri.fsPath);
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to install Git hook: ${error}`);
-        }
     });
 
     const summarizeFileCommand = vscode.commands.registerCommand('luna-encyclopedia.summarizeFile', async (fileUri?: vscode.Uri) => {
@@ -215,7 +209,6 @@ export async function activate(context: vscode.ExtensionContext) {
         updateStaleCommand, 
         showSummaryCommand, 
         refreshCommand,
-        installGitHookCommand,
         summarizeFileCommand,
         previewFilesCommand,
         generateBreakdownCommand,
@@ -303,4 +296,10 @@ async function registerMCPServer(context: vscode.ExtensionContext) {
     }
 }
 
-export function deactivate() {}
+export function deactivate() {
+    // Stop git commit watcher on deactivation
+    if (gitCommitWatcher) {
+        gitCommitWatcher.stop();
+    }
+}
+

@@ -28,12 +28,12 @@ Right-click any file → "LUNA: Explain This Code"
 **What you get:**
 - 📝 Human-readable markdown summaries with line numbers
 - 🤖 Machine-readable JSON for AI agent queries  
-- 📚 Educational code breakdowns (NEW!)
+- 📚 Educational code breakdowns
 - 🔗 Bidirectional dependency graphs ("uses X" + "used by Y")
 - 📊 Code complexity analysis + refactoring guidance
-- 🧹 Dead code detection with AI verification (NEW!)
+- 🧹 Dead code detection with AI verification
 - 🏗️ Smart architecture component mapping
-- ✅ Quality assurance reviews (NEW!)
+- ✅ Quality assurance reviews
 
 ## Quick Start
 
@@ -69,7 +69,7 @@ Command Palette → "LUNA: Update Stale Summaries"
 (Only regenerates modified files - much faster!)
 ```
 
-**Pro Tip**: Run `LUNA: Install Git Post-Commit Hook` to get automatic reminders in your terminal whenever you commit changes without updating your summaries! 🌙
+**Pro Tip**: LUNA automatically watches for git commits from ANY source (terminal, GitHub extension, VS Code UI, etc.) and prompts you to update summaries. No manual setup needed! 🌙
 
 ## Agent Instructions (Recommended)
 
@@ -106,7 +106,14 @@ This protocol maximizes efficiency and accuracy.
 **How to use**:
 - Create a file: `.github/copilot-instructions.md` and paste the protocol there (VS Code workspace standard!)
 - Or create a custom Copilot agent with these instructions
-- OrCode Breakdowns (NEW! - Educational Feature)
+- Or add to your personal system prompt
+- Share with your team for consistent behavior
+
+**Pro tip**: After setup, ask Copilot "Are my summaries up to date?" to see LUNA in action! 🎯
+
+## Advanced Features
+
+### Code Breakdowns - Educational Feature
 Generate detailed, educational explanations of your code:
 ```
 Right-click file → "LUNA: Explain This Code"
@@ -126,7 +133,7 @@ Right-click file → "LUNA: Explain This Code"
 
 Perfect for onboarding new developers or learning unfamiliar code!
 
-### Quality Assurance Reviews (NEW!)
+### Quality Assurance Reviews
 After fast deterministic analysis, Copilot validates the results:
 
 **Enabled by default** - Configure in Settings → `Enable Copilot QA`
@@ -144,53 +151,13 @@ After fast deterministic analysis, Copilot validates the results:
 - More accurate refactoring recommendations
 
 ### Dead Code Analysis
-Find unused exports with AI verifi
-
-## Settings
-
-Configure LUNA in VS Code Settings → Extensions → LUNA Encyclopedia:
-
-**Analysis Settings:**
-- **Copilot Model**: Choose which model to use (default: gpt-4o - FREE)
-- **Concurrent Workers**: Parallel analysis (1-20, default: 5)
-- **Max File Size**: Skip files larger than this (default: 500KB)
-- **Enable Copilot QA**: AI reviews deterministic analysis (default: ON) ✨
-
-**Breakdown Settings (NEW!):**
-- **Breakdown Verbosity**: How detailed code explanations should be
-  - Beginner: Full detail with analogies and examples
-  - Intermediate: Balanced explanations (default)
-  - Expertile.breakdown.md`** - Educational code breakdown (NEW! - for learning) 📚
-- **`src/foldername.index.md`** - Directory index with file listings
-- **`src/foldername.index.json`** - Directory index (machine-readable)
-
-### Meta-Analysis Files
-- **`complexity-heatmap.json`** - File complexity scores (0-10) with QA validation
-- **`component-map.json`** - Smart architectural grouping with QA review
-- **`dependency-graph.json`** - Full dependency relationships
-- **`dead-code-analysis.json`** - Unused exports with false positive detection
-- **`QA_REPORT.json`** - Quality assurance validation results (NEW!) ✨
-- **`SUMMARY_REPORT.md`** - Human-readable overview of issues
-**Advanced:**
-- **Branch Aware Summaries**: Separate summaries per git branch
-- **File Types**: Which extensions to include/excludecation:
+Find unused exports with AI verification:
 ```
 .codebase/dead-code-analysis.json
 ```
 
-Now includes `qaReviewed` and `falsePositives` count!
-
 ### Complexity Heatmap  
 Refactoring candidates with AI-validated scores (0-10):
-```
-.codebase/complexity-heatmap.json
-```
-- 🔴 8-10: Needs refactoring
-- ⚠️ 6-7: Monitor quality
-- ✅ 0-5: Good
-
-Now includes QA adjustments for better accuracy!y Heatmap  
-Refactoring candidates (scores 0-10):
 ```
 .codebase/complexity-heatmap.json
 ```
@@ -214,37 +181,33 @@ Copy to `.codebase/.luna-template.json` to enable.
 
 1. Install from VS Code Marketplace
 2. MCP server auto-registers on first activation ✅
-3. NEducational code breakdowns (NEW!)
-- ✅ AI quality assurance reviews (NEW!)
-- ✅ Bidirectional dependency tracking
-- ✅ Complexity heatmap for refactoring guidance
-- ✅ Dead code analysis with false positive detection
-- ✅ Smart architecture component mapping
-- ✅ Custom templates for domain-specific analysis
-- ✅ Right-click file summarization
-- ✅ Python-specific improvements (import resolution, relative paths)
-- ⚡ Performance optimizations ongoing
+3. No manual configuration needed!
 
-## Recent Updates (v1.1.0) 🎉
+## Settings
 
-### Major New Feature
-🆕 **Code Breakdown Generator** - Revolutionary educational feature that generates line-by-line explanations  
-   - 3 verbosity levels: Beginner (full detail) / Intermediate / Expert
-   - Multi-agent pipeline ensures accuracy
-   - Perfect for onboarding or learning unfamiliar code
-   - Output: `filename.breakdown.md` with TOC, examples, and gotchas
+Configure LUNA in VS Code Settings → Extensions → LUNA Encyclopedia:
 
-### Quality & Accuracy Improvements
-🆕 **Quality Assurance Validator** - AI reviews deterministic analysis for accuracy  
-   - Validates dead code detection (reduces false positives)
-   - Verifies complexity scores against actual patterns
-   - Framework-aware analysis
+**Analysis Settings:**
+- **Copilot Model**: Choose which model to use (default: gpt-4o - FREE)
+- **Concurrent Workers**: Parallel analysis (1-20, default: 5)
+- **Max File Size**: Skip files larger than this (default: 500KB)
+- **Enable Copilot QA**: AI reviews deterministic analysis (default: ON) ✨
 
-### Technical Enhancements
-🔧 **Python Improvements** - Better relative import resolution and component categorization  
-🔧 **Enhanced Prompts** - More accurate function call tracking and conservative line numbers  
-🔧 **Dependency Type Safety** - Handles mixed dependency formats correctly  
-🔧 **Smart Component Grouping** - Auto-detects project structure instead of hardcoded categories
+**Breakdown Settings:**
+- **Breakdown Verbosity**: How detailed code explanations should be
+  - Beginner: Full detail with analogies and examples
+  - Intermediate: Balanced explanations (default)
+  - Expert: Quick architecture overview only
+
+**Advanced:**
+- **Branch Aware Summaries**: Separate summaries per git branch
+- **File Types**: Which extensions to include/exclude
+
+## Cost
+
+- **Free**: Uses `gpt-4o` (standard Copilot model, no premium charges)
+- **Optional**: Configure different models in settings if preferred
+
 ---
 
 ## Generated Files & Analysis
@@ -254,8 +217,18 @@ LUNA generates **structured summaries AND meta-analysis files** in the `.codebas
 ### File Summaries
 - **`src/file.md`** - Human-readable summary (purpose, components, dependencies, line numbers)
 - **`src/file.json`** - Machine-readable summary (structured for AI agent queries)
+- **`src/file.breakdown.md`** - Educational code breakdown (for learning) 📚
 - **`src/foldername.index.md`** - Directory index with file listings
 - **`src/foldername.index.json`** - Directory index (machine-readable)
+
+### Meta-Analysis Files
+- **`complexity-heatmap.json`** - File complexity scores (0-10) with QA validation
+- **`component-map.json`** - Smart architectural grouping with QA review
+- **`dependency-graph.json`** - Full dependency relationships
+- **`dead-code-analysis.json`** - Unused exports with false positive detection
+- **`QA_REPORT.json`** - Quality assurance validation results ✨
+- **`SUMMARY_REPORT.md`** - Human-readable overview of issues
+
 ## Detailed Docs
 
 - **[Setup Guide](docs/SETUP.md)** - Installation and configuration
@@ -267,13 +240,25 @@ LUNA generates **structured summaries AND meta-analysis files** in the `.codebas
 
 LUNA is in active development. Features:
 - ✅ File summarization with precise line numbers
+- ✅ Educational code breakdowns
+- ✅ AI quality assurance reviews
 - ✅ Bidirectional dependency tracking
 - ✅ Complexity heatmap for refactoring guidance
-- ✅ Dead code analysis
-- ✅ Architecture component mapping
+- ✅ Dead code analysis with false positive detection
+- ✅ Smart architecture component mapping
 - ✅ Custom templates for domain-specific analysis
 - ✅ Right-click file summarization
-- ⚡ Performance optimizations in progress
+- ✅ Universal git commit detection (any git tool)
+- ✅ Python-specific improvements
+- ⚡ Performance optimizations ongoing
+
+## Recent Updates (v1.1.3)
+
+🗑️ **Removed Redundant Git Hook** - Universal watcher handles all commit sources  
+🔔 **Universal Git Commit Watcher** - Detects commits from terminal, GitHub extension, VS Code UI, etc.  
+✅ **MCP Server Auto-Update** - Extension automatically updates MCP path on version changes  
+📚 **Code Breakdown Generator** - Line-by-line educational explanations with 3 verbosity levels  
+🔍 **Quality Assurance Validator** - AI reviews deterministic analysis for accuracy
 
 ## License
 
