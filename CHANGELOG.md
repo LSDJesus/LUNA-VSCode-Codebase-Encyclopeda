@@ -89,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Improved - Documentation
 - Complete README.md overhaul with new features
 - Updated QUICK_START.md template with learning features
-- Enhanced LUNA_INSTRUCTIONS.md for AI agents
+- Enhanced COPILOT_INSTRUCTIONS.md for AI agents
 - Added comprehensive changelog
 
 ### Changed

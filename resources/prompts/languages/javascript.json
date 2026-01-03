@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "name": "javascript-enhancements",
+  "description": "JavaScript-specific analysis enhancements for file summaries",
+  "extends": "base/file-summary",
+  "additionalInstructions": [
+    "Note whether using CommonJS (require/module.exports) or ES modules (import/export)",
+    "Identify React hooks if present (useState, useEffect, etc.) with their purposes",
+    "For React components: list props, state, and component type (functional/class)",
+    "Flag async/await usage and Promise patterns",
+    "Note JSX usage and React-specific patterns",
+    "Identify Express middleware functions and their purposes",
+    "For Node.js: note if using callbacks, promises, or async/await",
+    "Document destructuring patterns in function parameters"
+  ]
+}

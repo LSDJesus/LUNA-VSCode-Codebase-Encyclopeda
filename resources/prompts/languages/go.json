@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "name": "go-enhancements",
+  "description": "Go-specific analysis enhancements for file summaries",
+  "extends": "base/file-summary",
+  "additionalInstructions": [
+    "Identify ALL exported symbols (capitalized names) and unexported symbols",
+    "Note struct definitions with their fields and tags (json:\"\", xml:\"\", db:\"\", etc.)",
+    "Document interface definitions and which types implement them",
+    "List methods with their receiver types (value receivers vs pointer receivers)",
+    "Identify goroutines (go keyword usage) and explain their purpose",
+    "Note channel usage (chan, <-chan, chan<-) and their directions",
+    "Document defer statements and their purposes",
+    "List error handling patterns and custom error types",
+    "Note select statements for channel multiplexing",
+    "Identify context.Context usage for cancellation and timeouts",
+    "Document init() functions if present",
+    "Note package-level variables and constants with their purposes"
+  ]
+}

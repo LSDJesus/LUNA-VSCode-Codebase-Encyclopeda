@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "name": "typescript-enhancements",
+  "description": "TypeScript-specific analysis enhancements for file summaries",
+  "extends": "base/file-summary",
+  "additionalInstructions": [
+    "Distinguish between interfaces, types, and classes (note which is which)",
+    "For interfaces: list all properties, methods, and whether they extend other interfaces",
+    "For types: note if they are union types, intersection types, or mapped types",
+    "Identify React hooks if present (useState, useEffect, useContext, etc.) with their purposes",
+    "Note whether exports are default or named (export default vs export { name })",
+    "Flag async/await usage and Promise return types",
+    "For React components: list props interface, state, hooks used, and component type (functional/class)",
+    "Identify decorators if using experimental decorators (@Injectable, @Component, etc.)",
+    "Note generic type parameters (<T>, <K extends keyof T>, etc.) and their constraints",
+    "For enums: list all values and note if they are string or numeric enums"
+  ]
+}

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { PromptManager } from './promptManager';
 
 type VerbosityLevel = 'beginner' | 'intermediate' | 'expert';
 
@@ -78,7 +79,7 @@ export class CodeBreakdownGenerator {
 
         // Agent 1: Analyze structure
         progress.report({ message: '🔍 Analyzing code structure...' });
-        const sections = await this.analyzeStructure(model, content, fileName, fileExt, token);
+        const sections = await this.analyzeStructure(model, content, fileName, fileExt, filePath, token);
         
         if (token.isCancellationRequested) {
             throw new Error('Cancelled by user');
@@ -107,6 +108,7 @@ export class CodeBreakdownGenerator {
                 verbosity, 
                 fileName, 
                 fileExt,
+                filePath,
                 token
             );
             
@@ -138,36 +140,17 @@ export class CodeBreakdownGenerator {
         content: string,
         fileName: string,
         fileExt: string,
+        filePath: string,
         token: vscode.CancellationToken
     ): Promise<CodeSection[]> {
         const truncated = content.length > 15000 ? content.substring(0, 15000) + '\n...[truncated]' : content;
 
-        const prompt = `Analyze this ${fileExt} file and identify its structural sections.
-
-File: ${fileName}
-
-\`\`\`${fileExt.substring(1) || 'txt'}
-${truncated}
-\`\`\`
-
-Identify ALL sections in order:
-- Import blocks
-- Constants/configuration
-- Classes (each class separately)
-- Functions (standalone functions)
-- Main execution block (if any)
-
-Respond with JSON only:
-\`\`\`json
-[
-  {"name": "Imports", "type": "imports", "startLine": 1, "endLine": 5},
-  {"name": "Constants", "type": "constant", "startLine": 6, "endLine": 10},
-  {"name": "class MyClass", "type": "class", "startLine": 12, "endLine": 150},
-  {"name": "function helper", "type": "function", "startLine": 155, "endLine": 180}
-]
-\`\`\`
-
-Be precise with line numbers. Include ALL code sections.`;
+        const promptManager = PromptManager.getInstance();
+        const prompt = await promptManager.getPromptForFile('structure-analysis', filePath, {
+            fileName,
+            fileExtension: fileExt.substring(1) || 'txt',
+            content: truncated
+        });
 
         try {
             const messages = [vscode.LanguageModelChatMessage.User(prompt)];
@@ -247,22 +230,23 @@ Be precise with line numbers. Include ALL code sections.`;
         verbosity: VerbosityLevel,
         fileName: string,
         fileExt: string,
+        filePath: string,
         token: vscode.CancellationToken
     ): Promise<string> {
         const verbosityInstructions = this.getVerbosityInstructions(verbosity);
 
-        const prompt = `You are a patient, expert code tutor. Explain this ${section.type} section from ${fileName}.
-
-**Verbosity Level: ${verbosity.toUpperCase()}**
-${verbosityInstructions}
-
-**Section:** ${section.name} (Lines ${section.startLine}-${section.endLine})
-
-\`\`\`${fileExt.substring(1) || 'txt'}
-${section.code}
-\`\`\`
-
-Generate a clear, educational explanation in Markdown format. Use the exact structure specified for the ${verbosity} level.`;
+        const promptManager = PromptManager.getInstance();
+        const prompt = await promptManager.getPromptForFile('section-explanation', filePath, {
+            sectionType: section.type,
+            fileName,
+            verbosity: verbosity.toUpperCase(),
+            verbosityInstructions,
+            sectionName: section.name,
+            startLine: section.startLine,
+            endLine: section.endLine,
+            fileExtension: fileExt.substring(1) || 'txt',
+            content: section.code
+        });
 
         try {
             const messages = [vscode.LanguageModelChatMessage.User(prompt)];

@@ -145,6 +145,57 @@ const tools: Tool[] = [
       required: ['workspace_path'],
     },
   },
+  {
+    name: 'get_api_reference',
+    description: 'Get complete API reference with all endpoints, request/response schemas, authentication, etc. Instantly know: path, method, request body fields, response fields, auth requirements.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+        filter_path: {
+          type: 'string',
+          description: 'Optional: filter by path pattern (e.g., "/api/characters")',
+        },
+        filter_method: {
+          type: 'string',
+          enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+          description: 'Optional: filter by HTTP method',
+        },
+        filter_tag: {
+          type: 'string',
+          description: 'Optional: filter by tag (e.g., "characters", "auth")',
+        },
+      },
+      required: ['workspace_path'],
+    },
+  },
+  {
+    name: 'search_endpoints',
+    description: 'Search API endpoints by pattern, description, or schema fields. Find: "endpoints that return User objects", "POST endpoints with file uploads", "authenticated endpoints".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+        query: {
+          type: 'string',
+          description: 'Search query (path pattern, response type, description keyword)',
+        },
+        search_in: {
+          type: 'string',
+          enum: ['all', 'path', 'description', 'response_schema', 'request_schema'],
+          description: 'Where to search',
+          default: 'all',
+        },
+      },
+      required: ['workspace_path', 'query'],
+    },
+  },
 ];
 
 // Handle tool listing
@@ -289,6 +340,132 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: JSON.stringify({
                 total_stale: staleFiles.length,
                 stale_files: staleFiles
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'get_api_reference': {
+        const { workspace_path, filter_path, filter_method, filter_tag } = args as {
+          workspace_path: string;
+          filter_path?: string;
+          filter_method?: string;
+          filter_tag?: string;
+        };
+        
+        const apiRef = summaryManager.getAPIReference(workspace_path);
+        if (!apiRef) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'API reference not found. Run "LUNA: Generate Codebase Summaries" first.'
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // Apply filters
+        let endpoints = apiRef.endpoints;
+        
+        if (filter_path) {
+          endpoints = endpoints.filter((ep: any) => 
+            ep.path.toLowerCase().includes(filter_path.toLowerCase())
+          );
+        }
+        
+        if (filter_method) {
+          endpoints = endpoints.filter((ep: any) => 
+            ep.method.toUpperCase() === filter_method.toUpperCase()
+          );
+        }
+        
+        if (filter_tag) {
+          endpoints = endpoints.filter((ep: any) => 
+            ep.tags?.some((tag: string) => tag.toLowerCase() === filter_tag.toLowerCase())
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                total_endpoints: endpoints.length,
+                frameworks: apiRef.frameworks,
+                endpoints: endpoints
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'search_endpoints': {
+        const { workspace_path, query, search_in } = args as {
+          workspace_path: string;
+          query: string;
+          search_in?: string;
+        };
+        
+        const apiRef = summaryManager.getAPIReference(workspace_path);
+        if (!apiRef) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'API reference not found. Run "LUNA: Generate Codebase Summaries" first.'
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        const searchTarget = search_in || 'all';
+        const queryLower = query.toLowerCase();
+        
+        const results = apiRef.endpoints.filter((ep: any) => {
+          if (searchTarget === 'all') {
+            return (
+              ep.path.toLowerCase().includes(queryLower) ||
+              ep.description?.toLowerCase().includes(queryLower) ||
+              ep.handler.toLowerCase().includes(queryLower) ||
+              ep.responseSchema?.type.toLowerCase().includes(queryLower) ||
+              ep.requestSchema?.type?.toLowerCase().includes(queryLower)
+            );
+          }
+          
+          if (searchTarget === 'path') {
+            return ep.path.toLowerCase().includes(queryLower);
+          }
+          
+          if (searchTarget === 'description') {
+            return ep.description?.toLowerCase().includes(queryLower) || false;
+          }
+          
+          if (searchTarget === 'response_schema') {
+            return ep.responseSchema?.type.toLowerCase().includes(queryLower) || false;
+          }
+          
+          if (searchTarget === 'request_schema') {
+            return ep.requestSchema?.type?.toLowerCase().includes(queryLower) || false;
+          }
+          
+          return false;
+        });
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                total_results: results.length,
+                query,
+                search_in: searchTarget,
+                endpoints: results
               }, null, 2),
             },
           ],

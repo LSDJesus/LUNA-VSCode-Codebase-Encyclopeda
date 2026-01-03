@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "name": "generic-language",
+  "description": "Fallback for languages without specific prompt templates",
+  "extends": "base/file-summary",
+  "additionalInstructions": [
+    "Note the programming language paradigm (OOP, functional, procedural)",
+    "Identify imports/includes and their purposes",
+    "Document public vs private visibility modifiers",
+    "List any language-specific features used (macros, attributes, annotations, etc.)"
+  ]
+}

@@ -136,7 +136,7 @@ Located in [mcp-server/src/index.ts](mcp-server/src/index.ts):
 - `get_dependency_graph` - Bidirectional relationships
 - `analyze_file` - Generate summary on-demand
 
-**Tool Selection Logic**: See decision tree in [LUNA_INSTRUCTIONS.md](.codebase/LUNA_INSTRUCTIONS.md#L79-L129)
+**Tool Selection Logic**: See decision tree in [COPILOT_INSTRUCTIONS.md](.codebase/COPILOT_INSTRUCTIONS.md#L79-L129)
 
 ### External Dependencies
 - `@modelcontextprotocol/sdk` - MCP protocol implementation

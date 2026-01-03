@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "name": "python-flask",
+  "description": "Flask-specific analysis enhancements",
+  "additionalInstructions": [
+    "List ALL route handlers with: @app.route or @blueprint.route decorator, HTTP methods, URL path",
+    "Document URL parameters (<param>) and query parameters",
+    "Identify request hooks: @app.before_request, @app.after_request, @app.teardown_request",
+    "Note template rendering (render_template calls) and template names",
+    "List blueprints if present and their URL prefixes",
+    "Document session usage and flash messages",
+    "Identify form handling and WTForms integration",
+    "Note database integration (Flask-SQLAlchemy models, db.session usage)",
+    "List custom error handlers (@app.errorhandler)"
+  ]
+}

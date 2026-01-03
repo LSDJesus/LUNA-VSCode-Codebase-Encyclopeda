@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "name": "qa-dead-code-validation",
+  "description": "Validates whether flagged exports are truly unused or framework-specific",
+  "userPromptTemplate": "You are a code quality analyst. Review these exports flagged as \"dead code\" (unused).\n\nFor each export, determine if it's TRULY unused or if it might be:\n1. Used via framework magic (decorators, middleware, plugins)\n2. Exported for external consumers (API, library interface)\n3. Called via reflection or dynamic import\n4. Part of a class that's instantiated elsewhere\n5. Used in test files not analyzed\n\nExports to verify:\n{{exportsJSON}}\n\nWorkspace: {{workspaceName}}\n\nRespond with JSON array:\n```json\n[\n  {\n    \"export\": \"export_name\",\n    \"file\": \"file_path\",\n    \"verifiedUnused\": true/false,\n    \"reason\": \"Explanation\",\n    \"confidence\": 0.0-1.0\n  }\n]\n```",
+  "additionalInstructions": [],
+  "temperature": 0,
+  "maxTokens": 1500
+}

@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "name": "base-structure-analysis",
+  "description": "Analyzes code structure to identify sections (imports, classes, functions, etc.)",
+  "userPromptTemplate": "Analyze this {{fileExtension}} file and identify its structural sections.\n\nFile: {{fileName}}\n\n```{{fileExtension}}\n{{content}}\n```\n\nIdentify ALL sections in order:\n- Import blocks\n- Constants/configuration\n- Classes (each class separately)\n- Functions (standalone functions)\n- Main execution block (if any)\n\nRespond with JSON only:\n```json\n[\n  {\"name\": \"Imports\", \"type\": \"imports\", \"startLine\": 1, \"endLine\": 5},\n  {\"name\": \"Constants\", \"type\": \"constant\", \"startLine\": 6, \"endLine\": 10},\n  {\"name\": \"class MyClass\", \"type\": \"class\", \"startLine\": 12, \"endLine\": 150},\n  {\"name\": \"function helper\", \"type\": \"function\", \"startLine\": 155, \"endLine\": 180}\n]\n```\n\nBe precise with line numbers. Include ALL code sections.",
+  "additionalInstructions": [],
+  "temperature": 0,
+  "maxTokens": 1500
+}

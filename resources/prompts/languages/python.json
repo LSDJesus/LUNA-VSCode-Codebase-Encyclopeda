@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "name": "python-enhancements",
+  "description": "Python-specific analysis enhancements for file summaries",
+  "extends": "base/file-summary",
+  "additionalInstructions": [
+    "Identify ALL decorators (@app.route, @router.post, @property, @staticmethod, @classmethod, @validator, etc.) with their line numbers",
+    "For Pydantic BaseModel subclasses, list all fields with their types and validators",
+    "Note async functions (async def) and where they use await",
+    "If __all__ is present, list all exported symbols exactly as defined",
+    "Identify context managers (with statements) and what resources they manage",
+    "Note type hints (typing.Optional, typing.List, etc.) and their usage",
+    "For FastAPI routes, document: HTTP method, path, request/response models, dependencies",
+    "For Django models, list: fields, relationships (ForeignKey, ManyToMany), Meta class options",
+    "For Flask routes, note: URL patterns, methods, before_request/after_request hooks",
+    "Identify dataclasses and their fields (@dataclass decorator)"
+  ]
+}

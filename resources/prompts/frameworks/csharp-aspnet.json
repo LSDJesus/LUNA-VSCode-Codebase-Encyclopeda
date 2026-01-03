@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "name": "csharp-aspnet",
+  "description": "ASP.NET Core-specific analysis enhancements",
+  "additionalInstructions": [
+    "List ALL controller actions with: [HttpGet], [HttpPost], route templates, action names",
+    "Document model binding: [FromBody], [FromQuery], [FromRoute], [FromForm] parameters",
+    "Identify middleware usage in Startup.cs or Program.cs",
+    "Note dependency injection in constructor with service lifetime (Transient, Scoped, Singleton)",
+    "List authorization policies and [Authorize] attributes",
+    "Document API versioning if present",
+    "Identify Entity Framework Core usage: DbContext, DbSet properties, migrations",
+    "Note validation attributes on models ([Required], [StringLength], [Range], etc.)",
+    "List filters: [ValidateAntiForgeryToken], custom action filters",
+    "Document SignalR hubs if present"
+  ]
+}

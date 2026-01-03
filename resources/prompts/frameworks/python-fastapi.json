@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "name": "python-fastapi",
+  "description": "FastAPI-specific analysis enhancements",
+  "additionalInstructions": [
+    "List ALL route handlers with: HTTP method (@app.get/@router.post/etc.), path, line number",
+    "For each route: document request model (Pydantic schema), response model, status codes",
+    "Identify dependency injection functions (Depends()) and what they provide",
+    "Note background tasks (BackgroundTasks) if used and what they do",
+    "Document middleware if present (@app.middleware decorator)",
+    "List startup/shutdown event handlers (@app.on_event('startup'))",
+    "Note path parameters, query parameters, and body parameters",
+    "Identify security dependencies (OAuth2, API keys, etc.)",
+    "Document response_model settings and status_code overrides"
+  ]
+}

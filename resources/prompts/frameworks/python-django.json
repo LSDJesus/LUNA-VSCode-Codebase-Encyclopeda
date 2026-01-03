@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "name": "python-django",
+  "description": "Django-specific analysis enhancements",
+  "additionalInstructions": [
+    "For models: list all fields with types (CharField, ForeignKey, etc.) and constraints (max_length, null, blank)",
+    "Document model relationships: ForeignKey targets, ManyToManyField intermediates, related_name values",
+    "List Meta class options (ordering, verbose_name, indexes, constraints)",
+    "Identify model methods: __str__, custom managers, properties",
+    "For views: note if Class-Based View or function-based, list permissions/authentication",
+    "Document signals if used (pre_save, post_save, etc.) and what they trigger",
+    "List admin customizations (ModelAdmin classes, list_display, search_fields)",
+    "Note form classes and their validation logic"
+  ]
+}

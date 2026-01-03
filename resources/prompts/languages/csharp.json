@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "name": "csharp-enhancements",
+  "description": "C#-specific analysis enhancements for file summaries",
+  "extends": "base/file-summary",
+  "additionalInstructions": [
+    "Identify ALL attributes ([ApiController], [HttpGet], [Authorize], [DataMember], etc.) with their purposes",
+    "For classes: note if they are interfaces, abstract classes, sealed classes, static classes, or structs",
+    "Document inheritance and implemented interfaces explicitly",
+    "List access modifiers (public, private, protected, internal, protected internal) for each member",
+    "Note properties vs fields (auto-properties, get/set accessibility)",
+    "Identify async/await patterns and Task return types",
+    "For ASP.NET: document controller actions, route templates, HTTP methods, model binding",
+    "Note LINQ queries and their purposes",
+    "List events and delegates if present",
+    "Document generic type parameters and constraints (where T : class, new())",
+    "Identify dependency injection in constructors (especially in ASP.NET Core)",
+    "Note nullable reference types usage (string? vs string)"
+  ]
+}

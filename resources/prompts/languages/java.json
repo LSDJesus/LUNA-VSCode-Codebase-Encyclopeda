@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "name": "java-enhancements",
+  "description": "Java-specific analysis enhancements for file summaries",
+  "extends": "base/file-summary",
+  "additionalInstructions": [
+    "Identify ALL annotations (@Override, @Service, @RestController, @Entity, @Autowired, etc.) with their purposes",
+    "For classes: note if they are interfaces, abstract classes, or concrete implementations",
+    "Document inheritance: extends relationships and implements relationships with all interfaces",
+    "List access modifiers (public, private, protected, package-private) for each member",
+    "For Spring components: note dependency injection patterns (@Autowired, constructor injection, setter injection)",
+    "Identify design patterns (Singleton, Factory, Builder, etc.) if present",
+    "Note exception handling patterns (try-catch blocks, throws declarations, custom exceptions)",
+    "For JPA entities: list fields, relationships (@OneToMany, @ManyToOne), and cascade types",
+    "Document static methods and fields with their purposes",
+    "List generic type parameters and their constraints (<T extends SomeClass>)"
+  ]
+}

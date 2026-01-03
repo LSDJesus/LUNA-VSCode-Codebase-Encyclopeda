@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "name": "qa-component-validation",
+  "description": "Validates architectural component groupings make sense",
+  "userPromptTemplate": "You are a software architect. Review this component grouping for a codebase.\n\nProject: {{workspaceName}}\n\nCurrent Component Map:\n{{componentsJSON}}\n\nEvaluate:\n1. Do these groupings make architectural sense?\n2. Are files in the right categories?\n3. Are there files that should be moved?\n4. Are any categories misnamed or redundant?\n\nRespond with JSON:\n```json\n{\n  \"verified\": true/false,\n  \"confidence\": 0.0-1.0,\n  \"issues\": [\"list of problems\"],\n  \"corrections\": {\n    \"misplacedFiles\": [{\"file\": \"path\", \"currentGroup\": \"X\", \"suggestedGroup\": \"Y\"}],\n    \"suggestedRenames\": [{\"from\": \"Old Name\", \"to\": \"Better Name\"}]\n  }\n}\n```",
+  "additionalInstructions": [],
+  "temperature": 0,
+  "maxTokens": 1200
+}

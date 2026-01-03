@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "name": "java-spring",
+  "description": "Spring Framework-specific analysis enhancements",
+  "additionalInstructions": [
+    "List ALL Spring annotations and their purposes (@Component, @Service, @Repository, @Controller, etc.)",
+    "For REST controllers: document @RequestMapping, @GetMapping, @PostMapping paths and methods",
+    "Identify dependency injection: @Autowired, @Qualifier, constructor injection",
+    "Note configuration beans: @Configuration, @Bean methods",
+    "Document transaction management: @Transactional annotations and propagation levels",
+    "List JPA repositories and custom query methods (@Query annotations)",
+    "Identify Spring Boot auto-configuration usage",
+    "Note scheduling tasks (@Scheduled) if present",
+    "Document request/response DTOs and validation annotations (@Valid, @NotNull, etc.)"
+  ]
+}

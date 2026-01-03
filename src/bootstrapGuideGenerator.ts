@@ -14,8 +14,8 @@ export class BootstrapGuideGenerator {
         if (!fs.existsSync(codebaseDir)) {
             fs.mkdirSync(codebaseDir, { recursive: true });
         }
-        fs.writeFileSync(path.join(codebaseDir, 'README.md'), readme);
-        fs.writeFileSync(path.join(codebaseDir, 'LUNA_INSTRUCTIONS.md'), instructions);
+        fs.writeFileSync(path.join(codebaseDir, 'USER_README.md'), readme);
+        fs.writeFileSync(path.join(codebaseDir, 'COPILOT_INSTRUCTIONS.md'), instructions);
         
         return readme; // Return README for backward compatibility
     }
@@ -94,7 +94,7 @@ To customize what files are analyzed:
 3. Optionally add exclusions to \`exclude.patterns\` (e.g., tests)
 4. Re-run "LUNA: Generate Codebase Summaries"
 
-For detailed instructions, see **LUNA_INSTRUCTIONS.md** in this folder.
+For detailed instructions, see **COPILOT_INSTRUCTIONS.md** in this folder.
 
 ---
 
@@ -151,13 +151,13 @@ You can customize this in VS Code Settings.
 
 1. ✅ Run "LUNA: Generate Codebase Summaries"
 2. ✅ Open Copilot Chat and ask about your code
-3. 📖 Read **LUNA_INSTRUCTIONS.md** for advanced setup (for Copilot agents)
+3. 📖 Read **COPILOT_INSTRUCTIONS.md** for advanced setup (for Copilot agents)
 
-**Questions?** Check the project's main README.md or MCP_INTEGRATION.md for technical details.`;
+**Questions?** Check the project's main USER_README.md or MCP_INTEGRATION.md for technical details.`;
     }
 
     private static generateInstructions(projectName: string, timestamp: string): string {
-        return `# LUNA_INSTRUCTIONS – Copilot Agent Setup & Operations Manual
+        return `# COPILOT_INSTRUCTIONS – Copilot Agent Setup & Operations Manual
 
 **Project**: ${projectName}  
 **Generated**: ${timestamp}  

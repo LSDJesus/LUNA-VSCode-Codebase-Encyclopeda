@@ -23,7 +23,7 @@ Copy and paste this prompt into Copilot Chat (make sure you're in Agent Mode):
 
 Follow these steps carefully:
 
-1. Read .codebase/LUNA_INSTRUCTIONS.md completely to understand how LUNA works
+1. Read .codebase/COPILOT_INSTRUCTIONS.md completely to understand how LUNA works
 2. Analyze the entire project structure by exploring the workspace:
    - What programming languages are used?
    - What are ALL the source file extensions? (don't miss any!)
@@ -64,12 +64,18 @@ LUNA will analyze your codebase (this may take a few minutes for large projects)
 
 ### Try These Queries in Agent Mode:
 
+**Code Understanding:**
 - "What's the architecture of this project?"
 - "Which files handle user authentication?"
 - "Show me the dependency graph for [filename]"
 - "Are any summaries out of date?"
-- "What are the most complex files?" (uses QA-validated scores!)
-- "Are there any false positives in the dead code analysis?"
+- "What are the most complex files?"
+
+**API Queries (NEW!):**
+- "Show me all POST endpoints"
+- "What's the endpoint for updating characters?"
+- "Which endpoints require authentication?"
+- "What's the request schema for /api/users?"
 
 ### Try the NEW Learning Features:
 
@@ -77,11 +83,16 @@ LUNA will analyze your codebase (this may take a few minutes for large projects)
 - Choose verbosity level in Settings (Beginner/Intermediate/Expert)
 - Get detailed educational breakdowns saved as `.breakdown.md` files
 
+### Need to Start Over? (NEW!)
+
+- Command Palette → **"LUNA: Reset .codebase Directory"**
+- Safely deletes all summaries and allows fresh start
+
 ---
 
 ## Need Help?
 
-- Review `.codebase/LUNA_INSTRUCTIONS.md` for complete documentation
+- Review `.codebase/COPILOT_INSTRUCTIONS.md` for complete documentation
 - Edit `.codebase/.lunasummarize` to customize what gets analyzed
 - Run **"LUNA: Update Stale Summaries"** after making code changes
 - Configure settings: Extensions → LUNA Encyclopedia

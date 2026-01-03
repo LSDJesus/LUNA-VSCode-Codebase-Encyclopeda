@@ -4,7 +4,8 @@
 
 LUNA is an **Agent-First Context API** that generates:
 1. **Structured summaries** for AI agents (instant, zero-token queries)
-2. **Educational code breakdowns** for human learning (NEW!)
+2. **API reference documentation** for instant endpoint lookup (NEW!)
+3. **Educational code breakdowns** for human learning
 
 ## How to Use
 
@@ -12,9 +13,19 @@ LUNA is an **Agent-First Context API** that generates:
 - Command: **"LUNA: Generate Codebase Summaries"**
 - Analyzes all files matching your include/exclude criteria
 - Creates summaries in this directory (.codebase/)
+- **NEW**: Includes API endpoint extraction for route files
 - **NEW**: Includes AI quality assurance reviews for accuracy
 
-### 2. Learn Your Code (NEW!)
+### 2. Query API Endpoints (NEW!)
+- Ask Copilot in Agent Mode:
+  - "Show me all POST endpoints"
+  - "What's the endpoint for updating characters?"
+  - "Which endpoints require authentication?"
+- Uses `get_api_reference` and `search_endpoints` MCP tools
+- Returns: path, method, request schema, response schema, auth requirements
+- No more grep → read → guess workflow!
+
+### 3. Learn Your Code
 - Right-click any file → **"LUNA: Explain This Code"**
 - Choose verbosity level in Settings:
   - **Beginner** 📚: Full explanations with analogies and examples
@@ -22,12 +33,17 @@ LUNA is an **Agent-First Context API** that generates:
   - **Expert** ⚡: Quick architecture overview
 - Generates `filename.breakdown.md` with line-by-line educational content
 
-### 3. Update Stale Summaries
+### 4. Update Stale Summaries
 - Command: **"LUNA: Update Stale Summaries"**
 - Only regenerates files that have changed (git-aware)
 - Use after each coding session
 
-### 4. Query with Copilot Agent Mode
+### 5. Reset If Needed (NEW!)
+- Command: **"LUNA: Reset .codebase Directory"**
+- Safely deletes all summaries and starts fresh
+- Useful when switching branches or major refactors
+
+### 6. Query with Copilot Agent Mode
 - Open Copilot Chat (Cmd+I)
 - Toggle **Agent Mode** (top right)
 - Ask naturally:
@@ -35,15 +51,16 @@ LUNA is an **Agent-First Context API** that generates:
   - "Which files import summaryPanel?"
   - "Show me the architecture"
   - "Are any summaries out of date?"
-  - "What are the most complex files?" (uses QA-validated scores!)
-  - "Are there false positives in dead code analysis?"
+  - "What are the most complex files?"
+  - **"Show me all GET endpoints"** (NEW!)
+  - **"What's the request schema for /api/users?"** (NEW!)
 
-### 5. Navigate to Code
+### 7. Navigate to Code
 - Agent references exact line numbers (e.g., "lines 10-25")
 - Click links in responses → editor jumps to that location
 - Bidirectional dependencies: "used by" shows reverse imports
 
-### 6. Maintenance & Staleness
+### 8. Maintenance & Staleness
 - If you detect that a file has been modified but its summary is stale (check `list_stale_summaries`), **inform the user**.
 - After performing a significant refactor, **explicitly suggest** that the user runs the **"LUNA: Summarize File"** command (or "Update Stale Summaries") to keep your context accurate.
 - Do not attempt to summarize files yourself; rely on the extension's specialized generation logic to maintain consistency.
@@ -61,36 +78,55 @@ Edit **.lunasummarize** in this directory to customize:
 - Breakdown verbosity level (Beginner/Intermediate/Expert)
 - Concurrent workers for speed
 - Max file size limit
+- Copilot model selection (gpt-4o, gpt-5-mini, etc.)
 
 ## File Structure
 
-- **LUNA_GUIDE.md** - Auto-generated usage guide for this project
-- **LUNA_INSTRUCTIONS.md** - This file
+- **QUICK_START.md** - Quick reference guide
+- **COPILOT_INSTRUCTIONS.md** - This file
 - **.lunasummarize** - Configuration file (customize this!)
+- **api-reference.json** - Complete API endpoint documentation (NEW!)
 - **src/file.md** - Human-readable summary (Markdown)
 - **src/file.json** - Machine-readable summary (JSON)
-- **src/file.breakdown.md** - Educational code breakdown (NEW!)
+- **src/file.breakdown.md** - Educational code breakdown
 - **src/INDEX.md** - Directory index with file listings
-- **complexity-heatmap.json** - QA-validated complexity scores (NEW!)
-- **dead-code-analysis.json** - Unused exports with false positive detection (NEW!)
-- **component-map.json** - Smart architecture grouping (NEW!)
-- **QA_REPORT.json** - Quality assurance validation results (NEW!)
+- **complexity-heatmap.json** - QA-validated complexity scores
+- **dead-code-analysis.json** - Unused exports with false positive detection
+- **component-map.json** - Smart architecture grouping
+- **dependency-graph.json** - Full bidirectional dependency map
+- **QA_REPORT.json** - Quality assurance validation results
 - **INDEX.md** - Root index for navigation
 
 ## MCP Tools Available
 
 Via Copilot Agent Mode:
+
+**File & Code Tools:**
 - `get_file_summary` - Instant cached lookup
-- `search_summaries` - Find by dependency/component
+- `search_summaries` - Find by dependency/component/keyword
 - `list_summaries` - List all cached files
 - `list_stale_summaries` - Find outdated summaries
 - `get_dependency_graph` - Show relationships
 - `analyze_file` - Generate summary for new file
 
+**API Reference Tools (NEW!):**
+- `get_api_reference` - Get all endpoints (filter by path/method/tag)
+- `search_endpoints` - Search endpoints (by path, description, schema)
+
 ## Tool Selection Decision Tree (for AI Agents)
 
 ```
 START: User asks a question about code
+│
+├─ Query is about API ENDPOINTS?
+│  ├─ Specific endpoint mentioned?
+│  │  └─ USE: search_endpoints(query="endpoint_path", search_in="path")
+│  │
+│  ├─ Filter by method/tag?
+│  │  └─ USE: get_api_reference(filter_method="POST", filter_tag="auth")
+│  │
+│  └─ General API overview?
+│     └─ USE: get_api_reference()
 │
 ├─ Query mentions SPECIFIC FILE NAME?
 │  ├─ YES: "What does extension.ts do?"

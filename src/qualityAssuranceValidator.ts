@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { PromptManager } from './promptManager';
 
 interface QAResult {
     verified: boolean;
@@ -96,32 +97,11 @@ export class QualityAssuranceValidator {
                 message: `QA: Validating dead code (${i + 1}-${Math.min(i + batchSize, orphanedExports.length)}/${orphanedExports.length})...` 
             });
 
-            const prompt = `You are a code quality analyst. Review these exports flagged as "dead code" (unused).
-
-For each export, determine if it's TRULY unused or if it might be:
-1. Used via framework magic (decorators, middleware, plugins)
-2. Exported for external consumers (API, library interface)
-3. Called via reflection or dynamic import
-4. Part of a class that's instantiated elsewhere
-5. Used in test files not analyzed
-
-Exports to verify:
-${JSON.stringify(batch, null, 2)}
-
-Workspace: ${path.basename(workspacePath)}
-
-Respond with JSON array:
-\`\`\`json
-[
-  {
-    "export": "export_name",
-    "file": "file_path",
-    "verifiedUnused": true/false,
-    "reason": "Explanation",
-    "confidence": 0.0-1.0
-  }
-]
-\`\`\``;
+            const promptManager = PromptManager.getInstance();
+            const prompt = await promptManager.getQAPrompt('dead-code', {
+                exportsJSON: JSON.stringify(batch, null, 2),
+                workspaceName: path.basename(workspacePath)
+            });
 
             try {
                 const messages = [vscode.LanguageModelChatMessage.User(prompt)];
@@ -187,35 +167,16 @@ Respond with JSON array:
                 const content = fs.readFileSync(filePath, 'utf-8');
                 const truncated = content.length > 3000 ? content.substring(0, 3000) + '\n...[truncated]' : content;
 
-                const prompt = `You are a code complexity analyst. Review this file's complexity score.
-
-File: ${fileData.file}
-Current Scores:
-- Coupling: ${fileData.coupling}/3 (dependencies count)
-- Impact: ${fileData.impact}/3 (files that depend on it)
-- Volatility: ${fileData.volatility}/4 (likely to change)
-- Total: ${fileData.totalScore}/10
-- Recommendation: ${fileData.recommendation}
-
-Code:
-\`\`\`
-${truncated}
-\`\`\`
-
-Evaluate:
-1. Does this score seem accurate?
-2. Is the recommendation (${fileData.recommendation}) appropriate?
-3. Should the score be adjusted?
-
-Respond with JSON:
-\`\`\`json
-{
-  "originalScore": ${fileData.totalScore},
-  "adjustedScore": <your recommended score 0-10>,
-  "reason": "Explanation",
-  "confidence": 0.0-1.0
-}
-\`\`\``;
+                const promptManager = PromptManager.getInstance();
+                const prompt = await promptManager.getQAPrompt('complexity', {
+                    file: fileData.file,
+                    coupling: fileData.coupling,
+                    impact: fileData.impact,
+                    volatility: fileData.volatility,
+                    totalScore: fileData.totalScore,
+                    recommendation: fileData.recommendation,
+                    content: truncated
+                });
 
                 const messages = [vscode.LanguageModelChatMessage.User(prompt)];
                 const response = await model.sendRequest(messages, {});
@@ -274,34 +235,13 @@ Respond with JSON:
                     const newLines = file.newContent.split('\n').length;
                     const lineDiff = Math.abs(newLines - oldLines);
 
-                    const prompt = `You are a code change analyzer. Determine if this file change requires re-summarization.
-
-File: ${file.filePath}
-Lines changed: ~${lineDiff}
-
-Old content (first 1000 chars):
-\`\`\`
-${file.oldContent.substring(0, 1000)}
-\`\`\`
-
-New content (first 1000 chars):
-\`\`\`
-${file.newContent.substring(0, 1000)}
-\`\`\`
-
-Classify the change:
-- "semantic": Logic changed, API changed, behavior different - NEEDS re-summary
-- "syntactic": Variable renames, refactoring same logic - MIGHT need re-summary
-- "formatting": Whitespace, comments only - NO re-summary needed
-
-Respond with JSON:
-\`\`\`json
-{
-  "requiresResummarization": true/false,
-  "changeType": "semantic|syntactic|formatting",
-  "reason": "Explanation"
-}
-\`\`\``;
+                    const promptManager = PromptManager.getInstance();
+                    const prompt = await promptManager.getQAPrompt('staleness', {
+                        filePath: file.filePath,
+                        lineDiff,
+                        oldContent: file.oldContent.substring(0, 1000),
+                        newContent: file.newContent.substring(0, 1000)
+                    });
 
                     const messages = [vscode.LanguageModelChatMessage.User(prompt)];
                     const response = await model.sendRequest(messages, {});
@@ -345,31 +285,11 @@ Respond with JSON:
 
         progress?.report({ message: 'QA: Validating component categorization...' });
 
-        const prompt = `You are a software architect. Review this component grouping for a codebase.
-
-Project: ${path.basename(workspacePath)}
-
-Current Component Map:
-${JSON.stringify(componentMap.components, null, 2)}
-
-Evaluate:
-1. Do these groupings make architectural sense?
-2. Are files in the right categories?
-3. Are there files that should be moved?
-4. Are any categories misnamed or redundant?
-
-Respond with JSON:
-\`\`\`json
-{
-  "verified": true/false,
-  "confidence": 0.0-1.0,
-  "issues": ["list of problems"],
-  "corrections": {
-    "misplacedFiles": [{"file": "path", "currentGroup": "X", "suggestedGroup": "Y"}],
-    "suggestedRenames": [{"from": "Old Name", "to": "Better Name"}]
-  }
-}
-\`\`\``;
+        const promptManager = PromptManager.getInstance();
+        const prompt = await promptManager.getQAPrompt('component', {
+            workspaceName: path.basename(workspacePath),
+            componentsJSON: JSON.stringify(componentMap.components, null, 2)
+        });
 
         try {
             const messages = [vscode.LanguageModelChatMessage.User(prompt)];

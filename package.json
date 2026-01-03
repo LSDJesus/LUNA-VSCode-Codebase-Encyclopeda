@@ -69,6 +69,11 @@
         "command": "luna-encyclopedia.previewFiles",
         "title": "LUNA: Preview Files to Summarize",
         "icon": "$(preview)"
+      },
+      {
+        "command": "luna-encyclopedia.reset",
+        "title": "LUNA: Reset .codebase Directory",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -263,11 +268,11 @@
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
-    "eslint": "^8.54.0",
-    "typescript": "^5.3.2"
+    "eslint": "^8.54.0"
   },
   "dependencies": {
     "marked": "^11.0.0",
-    "minimatch": "^9.0.5"
+    "minimatch": "^9.0.5",
+    "typescript": "^5.3.2"
   }
 }

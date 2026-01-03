@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "name": "qa-staleness-validation",
+  "description": "Determines if code changes require re-summarization",
+  "userPromptTemplate": "You are a code change analyzer. Determine if this file change requires re-summarization.\n\nFile: {{filePath}}\nLines changed: ~{{lineDiff}}\n\nOld content (first 1000 chars):\n```\n{{oldContent}}\n```\n\nNew content (first 1000 chars):\n```\n{{newContent}}\n```\n\nClassify the change:\n- \"semantic\": Logic changed, API changed, behavior different - NEEDS re-summary\n- \"syntactic\": Variable renames, refactoring same logic - MIGHT need re-summary\n- \"formatting\": Whitespace, comments only - NO re-summary needed\n\nRespond with JSON:\n```json\n{\n  \"requiresResummarization\": true/false,\n  \"changeType\": \"semantic|syntactic|formatting\",\n  \"reason\": \"Explanation\"\n}\n```",
+  "additionalInstructions": [],
+  "temperature": 0,
+  "maxTokens": 800
+}

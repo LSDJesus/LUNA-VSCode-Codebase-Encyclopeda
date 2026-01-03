@@ -286,6 +286,20 @@ export class SummaryManager {
     return { nodes, edges };
   }
 
+  /**
+   * Get API reference
+   */
+  getAPIReference(workspacePath: string): any | null {
+    const apiRefPath = path.join(workspacePath, '.codebase', 'api-reference.json');
+    
+    try {
+      const content = require('fs').readFileSync(apiRefPath, 'utf-8');
+      return JSON.parse(content);
+    } catch {
+      return null;
+    }
+  }
+
   private async findJsonFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
     

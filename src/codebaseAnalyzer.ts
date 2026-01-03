@@ -11,6 +11,9 @@ import { GitBranchDetector } from './gitBranchDetector';
 import { StaticImportAnalyzer } from './staticImportAnalyzer';
 import { DependencyAnalyzer } from './dependencyAnalyzer';
 import { QualityAssuranceValidator } from './qualityAssuranceValidator';
+import { EnhancedDeadCodeDetector } from './enhancedDeadCodeDetector';
+import { PromptManager } from './promptManager';
+import { APIReferenceGenerator } from './apiReferenceGenerator';
 
 interface FileSummary {
     purpose: string;
@@ -161,10 +164,10 @@ export class CodebaseAnalyzer {
         }
 
         // Create instructions if they don't exist
-        const instructionsPath = path.join(codebasePath, 'LUNA_INSTRUCTIONS.md');
+        const instructionsPath = path.join(codebasePath, 'COPILOT_INSTRUCTIONS.md');
         if (!fs.existsSync(instructionsPath)) {
-            progress.report({ message: 'Creating LUNA_INSTRUCTIONS.md...' });
-            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'LUNA_INSTRUCTIONS.md');
+            progress.report({ message: 'Creating COPILOT_INSTRUCTIONS.md...' });
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'COPILOT_INSTRUCTIONS.md');
             if (!fs.existsSync(templatePath)) {
                 throw new Error(`Template not found: ${templatePath}`);
             }
@@ -172,10 +175,10 @@ export class CodebaseAnalyzer {
         }
 
         // Create README for .codebase directory
-        const readmePath = path.join(codebasePath, 'README.md');
+        const readmePath = path.join(codebasePath, 'USER_README.md');
         if (!fs.existsSync(readmePath)) {
-            progress.report({ message: 'Creating .codebase/README.md...' });
-            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'README.md');
+            progress.report({ message: 'Creating .codebase/USER_README.md...' });
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'USER_README.md');
             if (!fs.existsSync(templatePath)) {
                 throw new Error(`Template not found: ${templatePath}`);
             }
@@ -269,9 +272,9 @@ export class CodebaseAnalyzer {
             fs.copyFileSync(templatePath, lunaSummarizePath);
         }
 
-        const instructionsPath = path.join(codebasePath, 'LUNA_INSTRUCTIONS.md');
+        const instructionsPath = path.join(codebasePath, 'COPILOT_INSTRUCTIONS.md');
         if (!fs.existsSync(instructionsPath)) {
-            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'LUNA_INSTRUCTIONS.md');
+            const templatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'COPILOT_INSTRUCTIONS.md');
             fs.copyFileSync(templatePath, instructionsPath);
         }
         
@@ -352,10 +355,26 @@ export class CodebaseAnalyzer {
         progress.report({ message: 'Computing dependency relationships...' });
         DependencyLinker.computeUsedByRelationships(workspaceFolder.uri.fsPath, codebasePath);
 
-        // Analyze code structure for dead code, components, and complexity
+        // Analyze code structure for components and complexity
         progress.report({ message: 'Analyzing codebase structure...' });
         const analyzer = new DependencyAnalyzer();
         await analyzer.analyze(workspaceFolder.uri.fsPath);
+
+        // Enhanced dead code detection (uses JSON summaries + AST parsing)
+        progress.report({ message: 'Detecting dead code with AST analysis...' });
+        const deadCodeDetector = new EnhancedDeadCodeDetector();
+        const orphanedExports = await deadCodeDetector.analyze(codebasePath, workspaceFolder.uri.fsPath);
+        await EnhancedDeadCodeDetector.saveResults(codebasePath, orphanedExports);
+
+        // Generate API reference (extracts endpoints from route files)
+        progress.report({ message: 'Extracting API endpoints...' });
+        const apiRefGenerator = new APIReferenceGenerator();
+        await apiRefGenerator.generateAPIReference(
+            workspaceFolder.uri.fsPath,
+            files.map(f => path.relative(workspaceFolder.uri.fsPath, f)),
+            models[0],
+            progress
+        );
 
         // Run Copilot QA on analysis results (if enabled)
         if (QualityAssuranceValidator.isEnabled(workspaceFolder.uri.fsPath)) {
@@ -481,8 +500,16 @@ export class CodebaseAnalyzer {
         // Step 1: Extract imports using static analysis (100% reliable)
         const staticDeps = StaticImportAnalyzer.analyzeImports(content, relPath, workspacePath);
         
-        // Step 2: Get Copilot's analysis for rich insights
-        const prompt = this.buildAnalysisPrompt(relPath, fileExt, content);
+        // Step 2: Build prompt using PromptManager (language + framework aware)
+        const promptManager = PromptManager.getInstance();
+        const truncatedContent = content.length > 8000 ? content.substring(0, 8000) + '\n...[truncated]' : content;
+        
+        const prompt = await promptManager.getPromptForFile('file-summary', filePath, {
+            relativePath: relPath.replace(/\\/g, '/'),
+            fileName: path.basename(relPath, fileExt),
+            fileExtension: fileExt.substring(1) || 'txt',
+            content: truncatedContent
+        });
         
         const messages = [
             vscode.LanguageModelChatMessage.User(prompt)
@@ -908,7 +935,7 @@ ${customTemplate}
 
         indexContent += `\n## Quick Navigation\n\n`;
         indexContent += `See individual \`foldername.index.md\` files in each directory for detailed file listings and descriptions.\n`;
-        indexContent += `Start with [../README.md](../README.md) for project documentation.\n`;
+        indexContent += `Start with [../USER_README.md](../USER_README.md) for project documentation.\n`;
 
         fs.writeFileSync(indexPath, indexContent, 'utf-8');
         fs.writeFileSync(indexJsonPath, JSON.stringify(indexJson, null, 2), 'utf-8');

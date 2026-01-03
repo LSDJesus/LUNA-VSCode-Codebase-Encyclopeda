@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "name": "base-section-explanation",
+  "description": "Explains a section of code with educational context",
+  "userPromptTemplate": "You are a patient, expert code tutor. Explain this {{sectionType}} section from {{fileName}}.\n\n**Verbosity Level: {{verbosity}}**\n{{verbosityInstructions}}\n\n**Section:** {{sectionName}} (Lines {{startLine}}-{{endLine}})\n\n```{{fileExtension}}\n{{content}}\n```\n\nGenerate a clear, educational explanation in Markdown format. Use the exact structure specified for the {{verbosity}} level.",
+  "additionalInstructions": [],
+  "temperature": 0.3,
+  "maxTokens": 2000
+}

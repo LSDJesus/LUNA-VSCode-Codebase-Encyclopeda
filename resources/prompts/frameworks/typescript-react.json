@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "name": "typescript-react",
+  "description": "React-specific analysis enhancements for TypeScript",
+  "additionalInstructions": [
+    "For components: document Props interface with all properties and types",
+    "List ALL hooks used: useState (state variable names), useEffect (dependencies), useContext, etc.",
+    "Note component lifecycle: useEffect cleanup functions, dependency arrays",
+    "Identify custom hooks and their return values",
+    "Document event handlers and their signatures",
+    "Note conditional rendering patterns (&&, ternary, early returns)",
+    "List any HOCs (Higher-Order Components) or render props patterns",
+    "Identify React.memo, useMemo, useCallback optimizations",
+    "Document context providers and consumers",
+    "Note if using forwardRef or useImperativeHandle"
+  ]
+}

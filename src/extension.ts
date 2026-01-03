@@ -7,12 +7,16 @@ import { CodeNavigationHandler } from './codeNavigationHandler';
 import { SummaryPreviewGenerator } from './summaryPreviewGenerator';
 import { CodeBreakdownGenerator } from './codeBreakdownGenerator';
 import { GitCommitWatcher } from './gitCommitWatcher';
+import { PromptManager } from './promptManager';
 
 let summaryTreeProvider: SummaryTreeProvider;
 let gitCommitWatcher: GitCommitWatcher | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('LUNA Codebase Encyclopedia is now active');
+
+    // Initialize prompt manager
+    PromptManager.initialize(context.extensionUri);
 
     // Auto-register MCP server on first activation
     await registerMCPServer(context);
@@ -203,6 +207,56 @@ export async function activate(context: vscode.ExtensionContext) {
     watcher.onDidCreate(() => summaryTreeProvider.refresh());
     watcher.onDidDelete(() => summaryTreeProvider.refresh());
 
+    // Reset .codebase directory command
+    const resetCommand = vscode.commands.registerCommand('luna-encyclopedia.reset', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('No workspace folder open');
+            return;
+        }
+
+        const codebasePath = path.join(workspaceFolder.uri.fsPath, '.codebase');
+        const fs = require('fs');
+
+        // Check if .codebase exists
+        if (!fs.existsSync(codebasePath)) {
+            vscode.window.showWarningMessage('No .codebase directory found to reset');
+            return;
+        }
+
+        // Confirm deletion
+        const confirm = await vscode.window.showWarningMessage(
+            '⚠️ This will permanently delete all summaries, analysis data, and configuration in .codebase/. Continue?',
+            { modal: true },
+            'Yes, Reset',
+            'Cancel'
+        );
+
+        if (confirm !== 'Yes, Reset') {
+            return;
+        }
+
+        try {
+            // Delete the directory recursively
+            fs.rmSync(codebasePath, { recursive: true, force: true });
+            
+            // Refresh tree view
+            summaryTreeProvider.refresh();
+
+            const action = await vscode.window.showInformationMessage(
+                '✅ .codebase directory reset successfully!',
+                'Initialize Now',
+                'Done'
+            );
+
+            if (action === 'Initialize Now') {
+                vscode.commands.executeCommand('luna-encyclopedia.initialize');
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to reset .codebase: ${error}`);
+        }
+    });
+
     context.subscriptions.push(
         initCommand,
         generateCommand, 
@@ -212,6 +266,7 @@ export async function activate(context: vscode.ExtensionContext) {
         summarizeFileCommand,
         previewFilesCommand,
         generateBreakdownCommand,
+        resetCommand,
         treeView,
         uriHandler,
         watcher

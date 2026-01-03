@@ -1,10 +1,10 @@
 # LUNA Codebase Encyclopedia
 
-🚀 **Agent-First Context API** - Generate structured summaries of your codebase for instant, zero-token Copilot Agent queries, plus educational code breakdowns for learning.
+🚀 **Agent-First Context API** - Generate structured summaries of your codebase for instant, zero-token Copilot Agent queries, plus educational code breakdowns and complete API reference documentation.
 
 ## What It Does
 
-LUNA analyzes your code and generates **two types of documentation**:
+LUNA analyzes your code and generates **three types of documentation**:
 
 ### 1. Encyclopedia Summaries (For AI Agents)
 Structured summaries (Markdown + JSON) that Copilot agents can query instantly without burning tokens.
@@ -16,8 +16,18 @@ Structured summaries (Markdown + JSON) that Copilot agents can query instantly w
 4. Copilot queries summaries (instant, zero tokens!) ✨
 ```
 
-### 2. Code Breakdowns (For YOU - New!)
-Line-by-line educational explanations that teach you how your code works. Perfect for onboarding or learning new codebases.
+### 2. API Reference (For Development Speed - NEW!)
+Automatic extraction of ALL API endpoints with complete request/response schemas.
+
+```
+After generation:
+Ask Copilot: "What's the endpoint for updating characters?"
+→ Instantly get: path, method, request schema, response schema, auth requirements
+No more grep → read → guess → grep again!
+```
+
+### 3. Code Breakdowns (For Learning)
+Line-by-line educational explanations that teach you how your code works.
 
 ```
 Right-click any file → "LUNA: Explain This Code"
@@ -28,12 +38,15 @@ Right-click any file → "LUNA: Explain This Code"
 **What you get:**
 - 📝 Human-readable markdown summaries with line numbers
 - 🤖 Machine-readable JSON for AI agent queries  
+- 📡 **Complete API reference (endpoints, schemas, auth)** ← NEW!
 - 📚 Educational code breakdowns
 - 🔗 Bidirectional dependency graphs ("uses X" + "used by Y")
 - 📊 Code complexity analysis + refactoring guidance
-- 🧹 Dead code detection with AI verification
+- 🧹 Dead code detection with AST-based analysis
 - 🏗️ Smart architecture component mapping
 - ✅ Quality assurance reviews
+- 🌍 **Multi-language support (Python, TypeScript, Java, C#, Go, JavaScript)** ← NEW!
+- 🔄 **Reset command** to start fresh ← NEW!
 
 ## Quick Start
 
@@ -55,21 +68,67 @@ Ask: "What's the architecture?" or "Which files are most complex?"
 Copilot instantly answers from your summaries
 ```
 
-### 4. Learn Your Code (NEW!)
+### 4. Query API Endpoints (NEW!)
+```
+Ask Copilot: "Show me all POST endpoints"
+→ #get_api_reference filter_method="POST"
+
+Ask: "What's the endpoint for updating characters?"
+→ #search_endpoints query="update" search_in="description"
+→ Instant: path, method, request schema, response schema, auth
+```
+
+### 5. Learn Your Code
 ```
 Right-click any file → "LUNA: Explain This Code"
 Choose verbosity: Beginner (full detail) / Intermediate / Expert
 Get a complete educational breakdown saved as filename.breakdown.md
 ```
 
-### 5. Keep Summaries Fresh
+### 6. Keep Summaries Fresh
 ```
 After committing code changes:
 Command Palette → "LUNA: Update Stale Summaries"
 (Only regenerates modified files - much faster!)
 ```
 
+### 7. Reset If Needed (NEW!)
+```
+Command Palette → "LUNA: Reset .codebase Directory"
+→ Safely delete all summaries and start fresh
+```
+
 **Pro Tip**: LUNA automatically watches for git commits from ANY source (terminal, GitHub extension, VS Code UI, etc.) and prompts you to update summaries. No manual setup needed! 🌙
+
+## MCP Tools for AI Agents
+
+LUNA provides these tools for Copilot Agent Mode:
+
+**File & Code Tools:**
+- `#get_file_summary` - Get cached summary for a specific file
+- `#search_summaries` - Search across all summaries (keywords, dependencies, components)
+- `#list_summaries` - List all cached summaries
+- `#get_dependency_graph` - Get bidirectional dependency relationships
+
+**API Reference Tools (NEW!):**
+- `#get_api_reference` - Get all endpoints (filter by path/method/tag)
+- `#search_endpoints` - Search endpoints (by path, description, schema types)
+
+**Maintenance Tools:**
+- `#list_stale_summaries` - Check which files need re-summarization
+- `#analyze_file` - Generate/update summary for specific file
+
+**Example Queries:**
+```
+"Show me all API endpoints that return Character objects"
+→ Uses #search_endpoints query="Character" search_in="response_schema"
+
+"Which files use the StaticImportAnalyzer?"
+→ Uses #search_summaries query="StaticImportAnalyzer" search_type="dependency"
+
+"What are the most complex files?"
+→ Reads complexity-heatmap.json and shows top files
+```
 
 ## Agent Instructions (Recommended)
 
@@ -84,6 +143,8 @@ When answering questions about code:
    - Use #search_summaries to find relevant files
    - Use #get_file_summary for detailed analysis
    - Use #get_dependency_graph for relationships
+   - **Use #get_api_reference for API questions** ← NEW!
+   - **Use #search_endpoints to find specific endpoints** ← NEW!
 
 2. **Only read source code** for:
    - Critical security/business logic verification
@@ -99,6 +160,7 @@ When answering questions about code:
    - 💰 Zero token waste (no re-reading files)
    - 🎯 Focus on higher-level architecture
    - 🔄 Always up-to-date (summaries track git history)
+   - 📡 **Complete API documentation at your fingertips** ← NEW!
 
 This protocol maximizes efficiency and accuracy.
 ```

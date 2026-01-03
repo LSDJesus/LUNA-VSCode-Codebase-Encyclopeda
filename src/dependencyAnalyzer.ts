@@ -42,27 +42,11 @@ export class DependencyAnalyzer {
         // Step 1: Load all file JSON summaries
         await this.loadMetadata(codebasePath);
 
-        // Step 2: Generate analyses
-        const deadCode = this.analyzeDeadCode();
+        // Step 2: Generate analyses (dead code analysis moved to EnhancedDeadCodeDetector)
         const components = this.generateComponentMap();
         const complexity = this.analyzeComplexity();
 
         // Step 3: Write output files
-        fs.writeFileSync(
-            path.join(codebasePath, 'dead-code-analysis.json'),
-            JSON.stringify({
-                generated: new Date().toISOString(),
-                summary: {
-                    totalExports: Array.from(this.metadata.values()).reduce((sum, m) => sum + m.exports.length, 0),
-                    orphanedExports: deadCode.length,
-                    orphanageRate: deadCode.length > 0 ? '⚠️ Found dead code' : '✅ No dead code detected'
-                },
-                orphanedExports: deadCode,
-                notes: 'Exports that are defined but never imported elsewhere. Consider removing or making internal.'
-            }, null, 2),
-            'utf-8'
-        );
-
         fs.writeFileSync(
             path.join(codebasePath, 'component-map.json'),
             JSON.stringify({
@@ -171,32 +155,8 @@ export class DependencyAnalyzer {
         walkDir(codebasePath, codebasePath);
     }
 
-    private analyzeDeadCode(): OrphanedExport[] {
-        const orphaned: OrphanedExport[] = [];
-
-        for (const [filePath, metadata] of this.metadata) {
-            for (const exportName of metadata.exports) {
-                // Check if this export is used anywhere
-                const isUsed = Array.from(this.metadata.values()).some(m => 
-                    m.dependencies.internal.some(dep => {
-                        const depStr = typeof dep === 'string' ? dep : String(dep || '');
-                        return depStr.includes(exportName) || depStr.includes(filePath);
-                    })
-                );
-
-                if (!isUsed && exportName !== 'activate' && exportName !== 'deactivate') {
-                    orphaned.push({
-                        file: filePath,
-                        export: exportName,
-                        type: 'unused_export'
-                    });
-                }
-            }
-        }
-
-        return orphaned;
-    }
-
+    // Dead code analysis moved to EnhancedDeadCodeDetector (uses AST + JSON summaries)
+    
     private generateComponentMap(): ComponentGroup[] {
         const components: ComponentGroup[] = [];
         const filesByDirectory = new Map<string, string[]>();

@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "name": "qa-complexity-validation",
+  "description": "Validates whether complexity scores match actual code patterns",
+  "userPromptTemplate": "You are a code complexity analyst. Review this file's complexity score.\n\nFile: {{file}}\nCurrent Scores:\n- Coupling: {{coupling}}/3 (dependencies count)\n- Impact: {{impact}}/3 (files that depend on it)\n- Volatility: {{volatility}}/4 (likely to change)\n- Total: {{totalScore}}/10\n- Recommendation: {{recommendation}}\n\nCode:\n```\n{{content}}\n```\n\nEvaluate:\n1. Does this score seem accurate?\n2. Is the recommendation ({{recommendation}}) appropriate?\n3. Should the score be adjusted?\n\nRespond with JSON:\n```json\n{\n  \"originalScore\": {{totalScore}},\n  \"adjustedScore\": <your recommended score 0-10>,\n  \"reason\": \"Explanation\",\n  \"confidence\": 0.0-1.0\n}\n```",
+  "additionalInstructions": [],
+  "temperature": 0,
+  "maxTokens": 1000
+}
