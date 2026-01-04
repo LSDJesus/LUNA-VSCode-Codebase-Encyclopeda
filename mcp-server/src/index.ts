@@ -196,6 +196,67 @@ const tools: Tool[] = [
       required: ['workspace_path', 'query'],
     },
   },
+  {
+    name: 'get_complexity_heatmap',
+    description: 'Get code complexity scores and refactoring candidates. Returns files ranked by complexity (0-10 scale).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+        min_score: {
+          type: 'number',
+          description: 'Optional: filter files with score >= min_score (0-10)',
+          default: 0,
+        },
+      },
+      required: ['workspace_path'],
+    },
+  },
+  {
+    name: 'get_dead_code',
+    description: 'Get unused exports and dead code analysis results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+      },
+      required: ['workspace_path'],
+    },
+  },
+  {
+    name: 'get_component_map',
+    description: 'Get architectural component grouping and file organization.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+      },
+      required: ['workspace_path'],
+    },
+  },
+  {
+    name: 'get_qa_report',
+    description: 'Get quality assurance validation results for analysis accuracy.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+      },
+      required: ['workspace_path'],
+    },
+  },
 ];
 
 // Handle tool listing
@@ -489,6 +550,148 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      }
+
+      case 'get_complexity_heatmap': {
+        const { workspace_path, min_score } = args as {
+          workspace_path: string;
+          min_score?: number;
+        };
+        
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const heatmapPath = path.join(workspace_path, '.codebase', 'complexity-heatmap.json');
+          const content = fs.readFileSync(heatmapPath, 'utf-8');
+          const heatmap = JSON.parse(content);
+          
+          // Filter by min_score if provided
+          if (min_score !== undefined && min_score > 0) {
+            heatmap.complexity = heatmap.complexity.filter((item: any) => item.totalScore >= min_score);
+          }
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(heatmap, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'Complexity heatmap not found. Run "LUNA: Generate Codebase Summaries" first.'
+                }, null, 2),
+              },
+            ],
+          };
+        }
+      }
+
+      case 'get_dead_code': {
+        const { workspace_path } = args as {
+          workspace_path: string;
+        };
+        
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const deadCodePath = path.join(workspace_path, '.codebase', 'dead-code-analysis.json');
+          const content = fs.readFileSync(deadCodePath, 'utf-8');
+          const deadCode = JSON.parse(content);
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(deadCode, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'Dead code analysis not found. Run "LUNA: Generate Codebase Summaries" first.'
+                }, null, 2),
+              },
+            ],
+          };
+        }
+      }
+
+      case 'get_component_map': {
+        const { workspace_path } = args as {
+          workspace_path: string;
+        };
+        
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const componentMapPath = path.join(workspace_path, '.codebase', 'component-map.json');
+          const content = fs.readFileSync(componentMapPath, 'utf-8');
+          const componentMap = JSON.parse(content);
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(componentMap, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'Component map not found. Run "LUNA: Generate Codebase Summaries" first.'
+                }, null, 2),
+              },
+            ],
+          };
+        }
+      }
+
+      case 'get_qa_report': {
+        const { workspace_path } = args as {
+          workspace_path: string;
+        };
+        
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const qaReportPath = path.join(workspace_path, '.codebase', 'QA_REPORT.json');
+          const content = fs.readFileSync(qaReportPath, 'utf-8');
+          const qaReport = JSON.parse(content);
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(qaReport, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'QA report not found. Run "LUNA: Generate Codebase Summaries" first.'
+                }, null, 2),
+              },
+            ],
+          };
+        }
       }
 
       default:

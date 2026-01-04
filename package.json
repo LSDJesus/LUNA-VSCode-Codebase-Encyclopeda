@@ -74,6 +74,11 @@
         "command": "luna-encyclopedia.reset",
         "title": "LUNA: Reset .codebase Directory",
         "icon": "$(trash)"
+      },
+      {
+        "command": "luna-encyclopedia.regenerateMeta",
+        "title": "LUNA: Regenerate Meta-Summaries",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -251,6 +256,14 @@
             "Expert: High-level architecture, design decisions, tricky sections only - for quick onboarding"
           ],
           "markdownDescription": "How detailed should code breakdowns be?\n\n- **Beginner** 📚: Learning the language/framework - explains everything including syntax\n- **Intermediate** 📖: Knows the language - focuses on project-specific patterns\n- **Expert** ⚡: Quick onboarding - just architecture and gotchas\n\n**Default: Intermediate**"
+        },
+        "luna-encyclopedia.manualRouteDirectories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional directories to search for API route files. Use this if your routes don't match standard patterns (e.g., `[\"src/api\", \"backend/routes\", \"server/handlers\"]`). Paths are relative to workspace root."
         }
       }
     }

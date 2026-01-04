@@ -90,6 +90,47 @@ exclude:
     - "**/.generated/**"
 
 # ═══════════════════════════════════════════════════════════════
+# API ROUTES: Enable API endpoint extraction (Optional)
+# ═══════════════════════════════════════════════════════════════
+# If your project has API endpoints (REST, GraphQL, RPC, etc.),
+# specify the directories where route/handler files are located.
+#
+# LUNA will automatically detect and extract:
+#   • HTTP endpoints (path, method, parameters)
+#   • Request/response schemas
+#   • Authentication requirements
+#   • Descriptions and tags
+#
+# Leave empty [] or omit if no API in this project
+apiRoutes: []
+
+# COMMON PATTERNS:
+# FastAPI/Flask:
+#   apiRoutes:
+#     - core/routes/
+#     - api/endpoints/
+#
+# Express.js:
+#   apiRoutes:
+#     - server/routes/
+#     - api/handlers/
+#
+# Django:
+#   apiRoutes:
+#     - myapp/views/
+#     - api/routes/
+#
+# Spring Boot:
+#   apiRoutes:
+#     - src/main/java/com/myapp/controllers/
+#
+# Go/Gin:
+#   apiRoutes:
+#     - internal/routes/
+#     - api/handlers/
+# ═══════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════
 # DECISION FRAMEWORK: What to include vs exclude
 # ═══════════════════════════════════════════════════════════════
 #

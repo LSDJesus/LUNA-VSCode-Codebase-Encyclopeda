@@ -33,15 +33,16 @@ Next steps:
 
 ## Files
 
-- **COPILOT_INSTRUCTIONS.md** - Complete guide for using LUNA
-- **.lunasummarize** - Configuration file (customize this before generating!)
+- **COPILOT_INSTRUCTIONS.md** - Complete guide for AI agents (MCP tools reference)
+- **.lunasummarize** - Configuration file (customize this!)
 - **QUICK_START.md** - Quick reference guide
 - **INDEX.md** - Navigation index for all summaries
-- **api-reference.json** - Complete API documentation (NEW!)
+- **api-reference.json** - Complete API endpoint documentation
+- **complexity-heatmap.json** - Code complexity scores (0-10 scale)
 - **dead-code-analysis.json** - Unused exports analysis
-- **component-map.json** - Architecture groupings
-- **complexity-heatmap.json** - Refactoring candidates
+- **component-map.json** - Architecture grouping
 - **dependency-graph.json** - Full relationship map
+- **QA_REPORT.json** - Quality assurance validation results
 - **src/file.md** - Human-readable summary for each source file
 - **src/file.json** - Machine-readable summary for each source file
 - **src/INDEX.md** - Directory indexes

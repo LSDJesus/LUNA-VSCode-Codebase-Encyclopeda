@@ -20,6 +20,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+test-project/
 .Python
 build/
 develop-eggs/

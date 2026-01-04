@@ -11,19 +11,26 @@ import { PromptManager } from './promptManager';
 
 let summaryTreeProvider: SummaryTreeProvider;
 let gitCommitWatcher: GitCommitWatcher | null = null;
+let lunaOutputChannel: vscode.OutputChannel;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('LUNA Codebase Encyclopedia is now active');
 
+    // Create output channel for LUNA logs
+    lunaOutputChannel = vscode.window.createOutputChannel('LUNA');
+    lunaOutputChannel.appendLine('🌙 LUNA Codebase Encyclopedia activated');
+
     // Initialize prompt manager
     PromptManager.initialize(context.extensionUri);
 
-    // Auto-register MCP server on first activation
-    await registerMCPServer(context);
+    // Auto-register MCP server on first activation (non-blocking)
+    registerMCPServer(context).catch(err => {
+        console.error('Failed to register MCP server:', err);
+    });
 
     // Initialize providers
     summaryTreeProvider = new SummaryTreeProvider(context);
-    const codebaseAnalyzer = new CodebaseAnalyzer(context);
+    const codebaseAnalyzer = new CodebaseAnalyzer(context, lunaOutputChannel);
 
     // Register URI handler for code navigation
     const uriHandler = CodeNavigationHandler.register(context);
@@ -257,10 +264,28 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Regenerate meta-summaries only (complexity, dead-code, component-map, dependency-graph, QA)
+    const regenerateMetaCommand = vscode.commands.registerCommand('luna-encyclopedia.regenerateMeta', async () => {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Regenerating meta-analysis summaries...",
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                await codebaseAnalyzer.regenerateMetaSummaries(progress, token);
+                summaryTreeProvider.refresh();
+                vscode.window.showInformationMessage('✅ Meta-summaries regenerated successfully!');
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to regenerate meta-summaries: ${error}`);
+            }
+        });
+    });
+
     context.subscriptions.push(
         initCommand,
         generateCommand, 
-        updateStaleCommand, 
+        updateStaleCommand,
+        regenerateMetaCommand,
         showSummaryCommand, 
         refreshCommand,
         summarizeFileCommand,
@@ -272,8 +297,10 @@ export async function activate(context: vscode.ExtensionContext) {
         watcher
     );
 
-    // Check if workspace needs initialization (AFTER commands are registered)
-    await checkAndPromptInitialization(codebaseAnalyzer);
+    // Check if workspace needs initialization (AFTER commands are registered, non-blocking)
+    checkAndPromptInitialization(codebaseAnalyzer).catch(err => {
+        console.error('Failed to check initialization:', err);
+    });
 }
 
 async function checkAndPromptInitialization(codebaseAnalyzer: any) {

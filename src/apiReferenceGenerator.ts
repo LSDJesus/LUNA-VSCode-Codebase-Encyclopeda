@@ -42,6 +42,21 @@ export interface APIReference {
 export class APIReferenceGenerator {
     private endpoints: APIEndpoint[] = [];
     private frameworks: Set<string> = new Set();
+    private logger?: (msg: string) => void;
+
+    /**
+     * Set logger for debugging
+     */
+    setLogger(logger: (msg: string) => void): void {
+        this.logger = logger;
+    }
+
+    private log(message: string): void {
+        if (this.logger) {
+            this.logger(message);
+        }
+        console.log(message);
+    }
 
     /**
      * Analyze all route files and generate API reference
@@ -55,11 +70,80 @@ export class APIReferenceGenerator {
         this.endpoints = [];
         this.frameworks = new Set();
 
-        // Filter files that likely contain routes
-        const routeFiles = files.filter(f => this.isLikelyRouteFile(f));
+        // Load .lunasummarize config for API routes
+        const configPath = path.join(workspacePath, '.codebase', '.lunasummarize');
+        let configuredApiRoutes: string[] = [];
+        
+        try {
+            if (fs.existsSync(configPath)) {
+                const configContent = fs.readFileSync(configPath, 'utf-8');
+                this.log(`📝 Loading config from: ${configPath}`);
+                this.log(`📝 Config content preview: ${configContent.substring(0, 200)}...`);
+                
+                // Try JSON first, then YAML
+                let config: any;
+                try {
+                    config = JSON.parse(configContent);
+                } catch {
+                    // Try YAML parsing (basic - extract apiRoutes section)
+                    // YAML format:
+                    // apiRoutes:
+                    //   - core/routes/
+                    //   - api/handlers/
+                    const apiRoutesSection = configContent.match(/apiRoutes:\s*([\s\S]*?)(?=\n[a-zA-Z#]|\Z)/);
+                    if (apiRoutesSection && apiRoutesSection[1]) {
+                        const lines = apiRoutesSection[1].split('\n');
+                        const items = lines
+                            .filter(line => line.match(/^\s*-\s+/))
+                            .map(line => line.replace(/^\s*-\s+/, '').trim().replace(/^["']|["']$/g, ''));
+                        
+                        config = {
+                            apiRoutes: items.length > 0 ? items : []
+                        };
+                    } else {
+                        config = {};
+                    }
+                }
+                
+                configuredApiRoutes = config.apiRoutes || [];
+                this.log(`✅ Loaded apiRoutes: ${JSON.stringify(configuredApiRoutes)}`);
+            }
+        } catch (error) {
+            this.log(`⚠️ Failed to load .lunasummarize config: ${error}`);
+        }
 
+        // Route detection: Configured paths take priority over strict pattern matching
+        let routeFiles: string[] = [];
+
+        // If apiRoutes are explicitly configured, use those (most reliable)
+        if (configuredApiRoutes.length > 0) {
+            this.log(`📁 Using configured apiRoutes: ${configuredApiRoutes.join(', ')}`);
+            this.log(`🔍 Total files to search: ${files.length}`);
+            routeFiles = files.filter(f => {
+                const filePath = f.toLowerCase();
+                return configuredApiRoutes.some(dir => {
+                    const dirLower = dir.toLowerCase();
+                    // Match files that are IN the directory
+                    return filePath.includes(dirLower) || filePath.startsWith(dirLower);
+                });
+            });
+            this.log(`📁 Found ${routeFiles.length} files in configured API routes: [${routeFiles.slice(0, 5).join(', ')}${routeFiles.length > 5 ? '...' : ''}]`);
+        } else {
+            // Fall back to strict pattern matching if no config
+            routeFiles = files.filter(f => this.isLikelyRouteFile(f));
+            this.log(`🔍 No apiRoutes configured. Using strict pattern matching: found ${routeFiles.length} route files`);
+        }
+
+        // If still nothing found, log helpful message
         if (routeFiles.length === 0) {
-            console.log('No route files detected');
+            this.log('❌ No API routes detected. To enable API reference generation:');
+            this.log('  1. Edit .codebase/.lunasummarize');
+            this.log('  2. Add an "apiRoutes" section with your route directories:');
+            this.log('     apiRoutes: ["core/routes/", "api/handlers/"]');
+            this.log('  3. Run "LUNA: Generate Codebase Summaries" again');
+            this.log(`\nDEBUG: Total files analyzed: ${files.length}`);
+            this.log(`DEBUG: Configured apiRoutes: ${configuredApiRoutes.join(', ')}`);
+            this.saveAPIReference(workspacePath); // Save empty reference
             return;
         }
 
@@ -157,21 +241,39 @@ export class APIReferenceGenerator {
                 responseText += chunk;
             }
 
-            // Parse JSON response
+            this.log(`[${relativePath}] Copilot response length: ${responseText.length} chars`);
+
+            // Try markdown code block format first
+            let jsonText = null;
             const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/);
             if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[1]);
-                const endpoints = (parsed.endpoints || []).map((ep: any) => ({
-                    ...ep,
-                    file: relativePath
-                }));
-                return endpoints;
+                jsonText = jsonMatch[1];
+            } else {
+                // Fallback: try to extract raw JSON object
+                const jsonStartIdx = responseText.indexOf('{');
+                const jsonEndIdx = responseText.lastIndexOf('}');
+                if (jsonStartIdx !== -1 && jsonEndIdx !== -1) {
+                    jsonText = responseText.substring(jsonStartIdx, jsonEndIdx + 1);
+                }
             }
-        } catch (error) {
-            console.error(`Failed to extract endpoints from ${relativePath}:`, error);
-        }
 
-        return [];
+            if (!jsonText) {
+                this.log(`[${relativePath}] ⚠️ No JSON found in response. Response preview: ${responseText.substring(0, 200)}`);
+                return [];
+            }
+
+            const parsed = JSON.parse(jsonText);
+            const endpoints = (parsed.endpoints || []).map((ep: any) => ({
+                ...ep,
+                file: relativePath
+            }));
+            
+            this.log(`[${relativePath}] ✅ Extracted ${endpoints.length} endpoints (framework: ${framework})`);
+            return endpoints;
+        } catch (error) {
+            this.log(`[${relativePath}] ❌ Failed to extract endpoints: ${error instanceof Error ? error.message : String(error)}`);
+            return [];
+        }
     }
 
     /**
@@ -239,7 +341,7 @@ export class APIReferenceGenerator {
         };
 
         fs.writeFileSync(apiRefPath, JSON.stringify(reference, null, 2), 'utf-8');
-        console.log(`✅ API Reference saved: ${this.endpoints.length} endpoints`);
+        this.log(`✅ API Reference saved: ${this.endpoints.length} endpoints`);
     }
 
     /**

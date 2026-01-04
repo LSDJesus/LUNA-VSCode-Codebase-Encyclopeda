@@ -110,13 +110,34 @@ LUNA provides these tools for Copilot Agent Mode:
 - `#list_summaries` - List all cached summaries
 - `#get_dependency_graph` - Get bidirectional dependency relationships
 
-**API Reference Tools (NEW!):**
+**API Reference Tools:**
 - `#get_api_reference` - Get all endpoints (filter by path/method/tag)
 - `#search_endpoints` - Search endpoints (by path, description, schema types)
+
+**Meta-Analysis Tools (NEW!):**
+- `#get_complexity_heatmap` - Get complexity scores and refactoring candidates (0-10 scale)
+- `#get_dead_code` - Get unused exports and dead code analysis
+- `#get_component_map` - Get architectural component grouping
+- `#get_qa_report` - Get quality assurance validation results
 
 **Maintenance Tools:**
 - `#list_stale_summaries` - Check which files need re-summarization
 - `#analyze_file` - Generate/update summary for specific file
+
+**Example Queries:**
+```
+"Show me the most complex files"
+→ #get_complexity_heatmap min_score=7
+
+"What are the unused exports?"
+→ #get_dead_code
+
+"What's the architecture?"
+→ #get_component_map
+
+"Show me all POST endpoints"
+→ #get_api_reference filter_method="POST"
+```
 
 **Example Queries:**
 ```

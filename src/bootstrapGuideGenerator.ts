@@ -322,6 +322,26 @@ excludeFiles:
 
 **Rule of thumb**: Exclude anything generated, tested, or vendored. Include everything custom.
 
+### Step 3C: Specify API Route Locations (Optional)
+
+If your project has API endpoints, tell LUNA where to find them:
+
+\`\`\`yaml
+apiRoutes:
+  # Absolute paths or glob patterns where your route/handler files are located
+  # Leave empty if no API, or specify multiple locations
+  - core/routes/
+  - api/handlers/
+  - server/src/routes/
+\`\`\`
+
+Examples:
+- **FastAPI/Flask**: \`core/routes/\` or \`api/endpoints/\`
+- **Express**: \`server/routes/\` or \`src/api/\`
+- **Django**: \`myapp/views/\` or \`api/routes/\`
+
+LUNA will automatically detect route files in these directories and extract endpoints.
+
 ---
 
 ## Phase 4: Generate & Validate

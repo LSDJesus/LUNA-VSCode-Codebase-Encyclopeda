@@ -65,7 +65,17 @@ export class CodebaseAnalyzer {
         };
     }
     
-    constructor(private context: vscode.ExtensionContext) {}
+    constructor(
+        private context: vscode.ExtensionContext,
+        private outputChannel?: vscode.OutputChannel
+    ) {}
+
+    private log(message: string): void {
+        if (this.outputChannel) {
+            this.outputChannel.appendLine(message);
+        }
+        console.log(message);
+    }
 
     async updateStaleSummaries(
         progress: vscode.Progress<{ message?: string; increment?: number }>,
@@ -369,6 +379,7 @@ export class CodebaseAnalyzer {
         // Generate API reference (extracts endpoints from route files)
         progress.report({ message: 'Extracting API endpoints...' });
         const apiRefGenerator = new APIReferenceGenerator();
+        apiRefGenerator.setLogger((msg: string) => this.log(msg));
         await apiRefGenerator.generateAPIReference(
             workspaceFolder.uri.fsPath,
             files.map(f => path.relative(workspaceFolder.uri.fsPath, f)),
@@ -394,6 +405,78 @@ export class CodebaseAnalyzer {
                 `⚠️ Found ${issueCount} issue(s) during summarization. See SUMMARY_REPORT.md for details.`
             );
         }
+    }
+
+    /**
+     * Regenerate only meta-analysis summaries (without re-summarizing files)
+     * 
+     * Rebuilds:
+     * - complexity-heatmap.json
+     * - component-map.json
+     * - dead-code-analysis.json
+     * - dependency-graph.json
+     * - QA_REPORT.json
+     */
+    async regenerateMetaSummaries(
+        progress: vscode.Progress<{ message?: string; increment?: number }>,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            throw new Error('No workspace folder open');
+        }
+
+        const codebasePath = path.join(workspaceFolder.uri.fsPath, '.codebase');
+        
+        // Verify summaries exist
+        if (!fs.existsSync(codebasePath)) {
+            throw new Error('No .codebase directory found. Run "LUNA: Generate Codebase Summaries" first.');
+        }
+
+        progress.report({ message: 'Analyzing existing summaries...' });
+        
+        // Get Language Model for API reference generation
+        const modelSelector = this.getModelSelector();
+        const models = await vscode.lm.selectChatModels(modelSelector);
+        if (models.length === 0) {
+            const modelName = modelSelector.family || 'unknown';
+            throw new Error(`No Copilot model "${modelName}" available. Please ensure GitHub Copilot is installed and active.`);
+        }
+
+        // Discover files for API reference generation
+        const files = await this.discoverFiles(workspaceFolder.uri.fsPath);
+
+        // Regenerate analyses using existing file summaries
+        progress.report({ message: 'Regenerating API reference...' });
+        const apiRefGenerator = new APIReferenceGenerator();
+        apiRefGenerator.setLogger((msg: string) => this.log(msg));
+        await apiRefGenerator.generateAPIReference(
+            workspaceFolder.uri.fsPath,
+            files.map(f => path.relative(workspaceFolder.uri.fsPath, f)),
+            models[0],
+            progress
+        );
+
+        progress.report({ message: 'Regenerating complexity heatmap...' });
+        const dependencyAnalyzer = new DependencyAnalyzer();
+        await dependencyAnalyzer.analyze(workspaceFolder.uri.fsPath);
+
+        progress.report({ message: 'Regenerating dead code analysis...' });
+        const deadCodeDetector = new EnhancedDeadCodeDetector();
+        const orphanedExports = await deadCodeDetector.analyze(codebasePath, workspaceFolder.uri.fsPath);
+        await EnhancedDeadCodeDetector.saveResults(codebasePath, orphanedExports);
+
+        progress.report({ message: 'Regenerating dependency graph...' });
+        // DependencyLinker runs after all analyses
+        DependencyLinker.computeUsedByRelationships(workspaceFolder.uri.fsPath, codebasePath);
+
+        // Run QA on regenerated analyses
+        progress.report({ message: 'Running quality assurance validation...' });
+        if (QualityAssuranceValidator.isEnabled(workspaceFolder.uri.fsPath)) {
+            await this.runQualityAssurance(workspaceFolder.uri.fsPath, codebasePath, progress);
+        }
+
+        progress.report({ message: 'Meta-summaries regenerated! ✅' });
     }
 
     private async discoverFiles(workspacePath: string): Promise<string[]> {
