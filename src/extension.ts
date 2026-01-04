@@ -23,10 +23,10 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize prompt manager
     PromptManager.initialize(context.extensionUri);
 
-    // Auto-register MCP server on first activation (non-blocking)
-    registerMCPServer(context).catch(err => {
-        console.error('Failed to register MCP server:', err);
-    });
+    // ALWAYS re-register MCP server on every activation
+    // This ensures the bundled MCP server is always used, regardless of install/update/reinstall
+    lunaOutputChannel.appendLine('📡 Registering MCP server...');
+    await registerMCPServer(context);
 
     // Initialize providers
     summaryTreeProvider = new SummaryTreeProvider(context);
@@ -157,6 +157,15 @@ export async function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage('✅ Preview generated! Check preview-included-files.txt');
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to generate preview: ${error}`);
+        }
+    });
+
+    const reregisterMCPCommand = vscode.commands.registerCommand('luna-encyclopedia.reregisterMCP', async () => {
+        try {
+            await registerMCPServer(context, true); // Force restart
+            vscode.window.showInformationMessage('✅ LUNA MCP Server restarted with latest code!');
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to re-register MCP server: ${error}`);
         }
     });
 
@@ -292,6 +301,7 @@ export async function activate(context: vscode.ExtensionContext) {
         previewFilesCommand,
         generateBreakdownCommand,
         resetCommand,
+        reregisterMCPCommand,
         treeView,
         uriHandler,
         watcher
@@ -329,52 +339,80 @@ async function checkAndPromptInitialization(codebaseAnalyzer: any) {
     }
 }
 
-async function registerMCPServer(context: vscode.ExtensionContext) {
+async function registerMCPServer(context: vscode.ExtensionContext, forceRestart: boolean = false) {
     const mcpServerPath = path.join(context.extensionPath, 'mcp-server', 'dist', 'index.js');
     const config = vscode.workspace.getConfiguration();
     const mcpServers = config.get<Record<string, any>>('mcp.servers', {});
 
-    // Check if LUNA MCP server needs registration or update
     const existingServer = mcpServers['lunaEncyclopedia'];
-    const needsUpdate = !existingServer || 
-                       existingServer.args?.[0] !== mcpServerPath;
+    const isFirstTime = !existingServer;
+    
+    // Detect if the MCP server path has changed (e.g., after reinstall/update)
+    const existingPath = existingServer?.args?.[0];
+    const pathChanged = existingPath && existingPath !== mcpServerPath;
+    
+    // For dev workflow: always restart if server exists (files may have changed on disk)
+    const shouldRestart = forceRestart || pathChanged || existingServer;
 
-    if (needsUpdate) {
-        try {
-            await config.update('mcp.servers', {
-                ...mcpServers,
-                lunaEncyclopedia: {
-                    type: 'stdio',
-                    command: 'node',
-                    args: [mcpServerPath]
-                }
-            }, vscode.ConfigurationTarget.Global);
-
-            if (!existingServer) {
-                // First-time registration
-                vscode.window.showInformationMessage(
-                    '✅ LUNA MCP Server registered! Copilot Agent Mode can now query your codebase summaries.',
-                    'Open Copilot Chat'
-                ).then(selection => {
-                    if (selection === 'Open Copilot Chat') {
-                        vscode.commands.executeCommand('workbench.panel.chat.view.copilot.focus');
-                    }
-                });
-            } else {
-                // Updated to new version
-                console.log('LUNA MCP server path updated to:', mcpServerPath);
+    try {
+        // Register single global MCP server
+        await config.update('mcp.servers', {
+            ...mcpServers,
+            lunaEncyclopedia: {
+                type: 'stdio',
+                command: 'node',
+                args: [mcpServerPath]
             }
-        } catch (error) {
-            console.error('Failed to register LUNA MCP server:', error);
-            vscode.window.showWarningMessage(
-                'LUNA: Could not auto-register MCP server. You may need to manually add it to your VS Code settings.',
-                'Show Instructions'
+        }, vscode.ConfigurationTarget.Global);
+
+        lunaOutputChannel.appendLine(`✅ MCP server registered at: ${mcpServerPath}`);
+        
+        if (shouldRestart && !isFirstTime) {
+            // Always try to restart existing MCP server to pick up file changes
+            lunaOutputChannel.appendLine('🔄 Restarting MCP server to pick up any changes...');
+            
+            try {
+                await vscode.commands.executeCommand('mcp.restartServer', 'lunaEncyclopedia');
+                lunaOutputChannel.appendLine('✅ MCP server restarted successfully');
+            } catch {
+                // Command might not exist in older VS Code versions - that's okay
+                lunaOutputChannel.appendLine('ℹ️ Auto-restart not available. Use "LUNA: Re-register MCP Server" if needed.');
+            }
+        } else if (isFirstTime) {
+            vscode.window.showInformationMessage(
+                '✅ LUNA MCP Server registered! Copilot Agent Mode can now query your codebase summaries.',
+                'Open Copilot Chat'
             ).then(selection => {
-                if (selection === 'Show Instructions') {
-                    vscode.env.openExternal(vscode.Uri.parse('https://github.com/yourusername/LUNA-VSCode-Codebase-Encyclopeda#mcp-setup'));
+                if (selection === 'Open Copilot Chat') {
+                    vscode.commands.executeCommand('workbench.panel.chat.view.copilot.focus');
                 }
             });
         }
+    } catch (error) {
+        console.error('Failed to register LUNA MCP server:', error);
+        lunaOutputChannel.appendLine(`❌ Failed to register MCP server: ${error}`);
+        vscode.window.showWarningMessage(
+            'LUNA: Could not auto-register MCP server. Try running "LUNA: Re-register MCP Server" from the command palette.'
+        );
+    }
+}
+
+async function unregisterMCPServer(context: vscode.ExtensionContext) {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+        return;
+    }
+
+    const workspaceName = workspaceFolder.name;
+    const serverName = `lunaEncyclopedia-${workspaceName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    
+    const config = vscode.workspace.getConfiguration();
+    const mcpServers = config.get<Record<string, any>>('mcp.servers', {});
+    
+    if (mcpServers[serverName]) {
+        delete mcpServers[serverName];
+        await config.update('mcp.servers', mcpServers, vscode.ConfigurationTarget.Global);
+        console.log('LUNA MCP server unregistered:', serverName);
     }
 }
 
@@ -383,5 +421,8 @@ export function deactivate() {
     if (gitCommitWatcher) {
         gitCommitWatcher.stop();
     }
+    
+    // Note: We don't unregister MCP server here because VS Code might just be reloading
+    // User can manually clean up old servers if needed
 }
 

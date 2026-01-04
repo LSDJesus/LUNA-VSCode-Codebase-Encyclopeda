@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
@@ -11,18 +11,13 @@ import { SummaryManager } from './summaryManager.js';
 import { CopilotAnalyzer } from './copilotAnalyzer.js';
 import { StalenessChecker } from './stalenessChecker.js';
 import { LRUCache, CacheKeyGenerator } from './lruCache.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import { createRequire } from 'module';
 
-const server = new Server(
-  {
-    name: 'luna-encyclopedia',
-    version: '0.1.0',
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  }
-);
+// Import version from package.json (ESM-compatible)
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json');
 
 // Initialize managers
 const summaryManager = new SummaryManager();
@@ -259,14 +254,24 @@ const tools: Tool[] = [
   },
 ];
 
-// Handle tool listing
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools,
-}));
+const server = new McpServer(
+  {
+    name: 'luna-encyclopedia',
+    version: version, // Imported from package.json
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
 
-// Handle tool execution
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+// Register all tools
+for (const tool of tools) {
+  server.registerTool(tool.name, {
+    description: tool.description,
+  }, async (args: any) => {
+    const name = tool.name;
 
   try {
     switch (name) {
@@ -559,11 +564,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
         
         try {
-          const fs = require('fs');
-          const path = require('path');
-          const heatmapPath = path.join(workspace_path, '.codebase', 'complexity-heatmap.json');
-          const content = fs.readFileSync(heatmapPath, 'utf-8');
-          const heatmap = JSON.parse(content);
+          const heatmap = summaryManager.getComplexityHeatmap(workspace_path);
+          if (!heatmap) {
+            throw new Error('Not found');
+          }
           
           // Filter by min_score if provided
           if (min_score !== undefined && min_score > 0) {
@@ -579,12 +583,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             ],
           };
         } catch (error) {
+          console.error('[MCP] Error loading complexity heatmap:', error);
           return {
             content: [
               {
                 type: 'text',
                 text: JSON.stringify({
-                  error: 'Complexity heatmap not found. Run "LUNA: Generate Codebase Summaries" first.'
+                  error: 'Complexity heatmap not found. Run "LUNA: Generate Codebase Summaries" first.',
+                  details: error instanceof Error ? error.message : String(error)
                 }, null, 2),
               },
             ],
@@ -598,11 +604,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
         
         try {
-          const fs = require('fs');
-          const path = require('path');
-          const deadCodePath = path.join(workspace_path, '.codebase', 'dead-code-analysis.json');
-          const content = fs.readFileSync(deadCodePath, 'utf-8');
-          const deadCode = JSON.parse(content);
+          const deadCode = summaryManager.getDeadCodeAnalysis(workspace_path);
+          if (!deadCode) {
+            throw new Error('Not found');
+          }
           
           return {
             content: [
@@ -632,11 +637,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
         
         try {
-          const fs = require('fs');
-          const path = require('path');
-          const componentMapPath = path.join(workspace_path, '.codebase', 'component-map.json');
-          const content = fs.readFileSync(componentMapPath, 'utf-8');
-          const componentMap = JSON.parse(content);
+          const componentMap = summaryManager.getComponentMap(workspace_path);
+          if (!componentMap) {
+            throw new Error('Not found');
+          }
           
           return {
             content: [
@@ -666,11 +670,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
         
         try {
-          const fs = require('fs');
-          const path = require('path');
-          const qaReportPath = path.join(workspace_path, '.codebase', 'QA_REPORT.json');
-          const content = fs.readFileSync(qaReportPath, 'utf-8');
-          const qaReport = JSON.parse(content);
+          const qaReport = summaryManager.getQAReport(workspace_path);
+          if (!qaReport) {
+            throw new Error('Not found');
+          }
           
           return {
             content: [
@@ -708,7 +711,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true,
     };
   }
-});
+  });
+}
 
 // Start server
 async function main() {

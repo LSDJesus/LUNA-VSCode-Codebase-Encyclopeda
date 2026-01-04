@@ -60,10 +60,11 @@ export class APIReferenceGenerator {
 
     /**
      * Analyze all route files and generate API reference
+     * Scans apiRoutes directories directly and checks file contents for API frameworks
      */
     async generateAPIReference(
         workspacePath: string,
-        files: string[],
+        _files: string[], // Ignored - we scan apiRoutes directories directly
         model: vscode.LanguageModelChat,
         progress?: vscode.Progress<{ message?: string }>
     ): Promise<void> {
@@ -77,130 +78,197 @@ export class APIReferenceGenerator {
         try {
             if (fs.existsSync(configPath)) {
                 const configContent = fs.readFileSync(configPath, 'utf-8');
-                this.log(`📝 Loading config from: ${configPath}`);
-                this.log(`📝 Config content preview: ${configContent.substring(0, 200)}...`);
+                this.log('Loading .lunasummarize config...');
                 
                 // Try JSON first, then YAML
                 let config: any;
                 try {
                     config = JSON.parse(configContent);
                 } catch {
-                    // Try YAML parsing (basic - extract apiRoutes section)
-                    // YAML format:
-                    // apiRoutes:
-                    //   - core/routes/
-                    //   - api/handlers/
-                    const apiRoutesSection = configContent.match(/apiRoutes:\s*([\s\S]*?)(?=\n[a-zA-Z#]|\Z)/);
+                    // YAML parsing - extract apiRoutes section
+                    const apiRoutesSection = configContent.match(/apiRoutes:\s*([\s\S]*?)(?=\n[a-zA-Z#]|\n\n|$)/);
                     if (apiRoutesSection && apiRoutesSection[1]) {
                         const lines = apiRoutesSection[1].split('\n');
                         const items = lines
                             .filter(line => line.match(/^\s*-\s+/))
                             .map(line => line.replace(/^\s*-\s+/, '').trim().replace(/^["']|["']$/g, ''));
                         
-                        config = {
-                            apiRoutes: items.length > 0 ? items : []
-                        };
+                        config = { apiRoutes: items.length > 0 ? items : [] };
                     } else {
                         config = {};
                     }
                 }
                 
                 configuredApiRoutes = config.apiRoutes || [];
-                this.log(`✅ Loaded apiRoutes: ${JSON.stringify(configuredApiRoutes)}`);
+                this.log('Loaded apiRoutes: ' + JSON.stringify(configuredApiRoutes));
             }
         } catch (error) {
-            this.log(`⚠️ Failed to load .lunasummarize config: ${error}`);
+            this.log('Failed to load .lunasummarize config: ' + String(error));
         }
 
-        // Route detection: Configured paths take priority over strict pattern matching
-        let routeFiles: string[] = [];
-
-        // If apiRoutes are explicitly configured, use those (most reliable)
-        if (configuredApiRoutes.length > 0) {
-            this.log(`📁 Using configured apiRoutes: ${configuredApiRoutes.join(', ')}`);
-            this.log(`🔍 Total files to search: ${files.length}`);
-            routeFiles = files.filter(f => {
-                const filePath = f.toLowerCase();
-                return configuredApiRoutes.some(dir => {
-                    const dirLower = dir.toLowerCase();
-                    // Match files that are IN the directory
-                    return filePath.includes(dirLower) || filePath.startsWith(dirLower);
-                });
-            });
-            this.log(`📁 Found ${routeFiles.length} files in configured API routes: [${routeFiles.slice(0, 5).join(', ')}${routeFiles.length > 5 ? '...' : ''}]`);
-        } else {
-            // Fall back to strict pattern matching if no config
-            routeFiles = files.filter(f => this.isLikelyRouteFile(f));
-            this.log(`🔍 No apiRoutes configured. Using strict pattern matching: found ${routeFiles.length} route files`);
-        }
-
-        // If still nothing found, log helpful message
-        if (routeFiles.length === 0) {
-            this.log('❌ No API routes detected. To enable API reference generation:');
-            this.log('  1. Edit .codebase/.lunasummarize');
-            this.log('  2. Add an "apiRoutes" section with your route directories:');
-            this.log('     apiRoutes: ["core/routes/", "api/handlers/"]');
-            this.log('  3. Run "LUNA: Generate Codebase Summaries" again');
-            this.log(`\nDEBUG: Total files analyzed: ${files.length}`);
-            this.log(`DEBUG: Configured apiRoutes: ${configuredApiRoutes.join(', ')}`);
-            this.saveAPIReference(workspacePath); // Save empty reference
+        // If no apiRoutes configured, skip API reference generation
+        if (configuredApiRoutes.length === 0) {
+            this.log('No apiRoutes configured in .lunasummarize. Skipping API reference generation.');
+            this.log('To enable: add apiRoutes section with your route directories');
+            this.saveAPIReference(workspacePath);
             return;
         }
 
-        progress?.report({ message: `🔍 Analyzing ${routeFiles.length} API route files...` });
+        // Scan apiRoutes directories directly (independent of summary file discovery)
+        this.log('Scanning configured apiRoutes directories...');
+        const apiFiles = await this.scanApiRoutesDirectories(workspacePath, configuredApiRoutes);
+        this.log('Found ' + apiFiles.length + ' files in apiRoutes directories');
 
-        // Analyze each route file
-        for (let i = 0; i < routeFiles.length; i++) {
-            const filePath = path.join(workspacePath, routeFiles[i]);
-            
-            progress?.report({ 
-                message: `📡 Extracting endpoints (${i + 1}/${routeFiles.length})...` 
-            });
+        if (apiFiles.length === 0) {
+            this.log('No files found in configured apiRoutes directories');
+            this.saveAPIReference(workspacePath);
+            return;
+        }
 
+        // Filter to only files that contain API framework imports
+        progress?.report({ message: 'Scanning ' + apiFiles.length + ' files for API frameworks...' });
+        const routeFiles: Array<{ fullPath: string; relativePath: string; framework: string }> = [];
+        
+        for (const f of apiFiles) {
             try {
-                const content = fs.readFileSync(filePath, 'utf-8');
-                const endpoints = await this.extractEndpoints(filePath, routeFiles[i], content, model);
-                this.endpoints.push(...endpoints);
-            } catch (error) {
-                console.error(`Failed to analyze ${routeFiles[i]}:`, error);
+                const content = fs.readFileSync(f.fullPath, 'utf-8');
+                const framework = this.detectFramework(content, this.detectLanguage(path.extname(f.fullPath)));
+                if (framework) {
+                    this.log('  Found: ' + f.relativePath + ' (' + framework + ')');
+                    routeFiles.push({ ...f, framework });
+                }
+            } catch {
+                // Skip files that can't be read
             }
         }
+
+        this.log('Found ' + routeFiles.length + ' files with API frameworks');
+
+        if (routeFiles.length === 0) {
+            this.log('No files with API frameworks found. Looking for: FastAPI, Flask, Django, Express, NestJS, Spring, ASP.NET');
+            this.saveAPIReference(workspacePath);
+            return;
+        }
+
+        progress?.report({ message: 'Extracting endpoints from ' + routeFiles.length + ' API files...' });
+
+        // Process files concurrently with limit (5 at a time)
+        const concurrencyLimit = 5;
+        const results: APIEndpoint[] = [];
+        
+        for (let i = 0; i < routeFiles.length; i += concurrencyLimit) {
+            const batch = routeFiles.slice(i, i + concurrencyLimit);
+            const batchPromises = batch.map(async ({ fullPath, relativePath }) => {
+                progress?.report({ 
+                    message: 'Extracting endpoints (' + (i + 1) + '-' + Math.min(i + concurrencyLimit, routeFiles.length) + '/' + routeFiles.length + '): ' + path.basename(relativePath) 
+                });
+
+                try {
+                    const content = fs.readFileSync(fullPath, 'utf-8');
+                    const endpoints = await this.extractEndpointsWithRetry(fullPath, relativePath, content, model, 2);
+                    this.log('[' + relativePath + '] Extracted ' + endpoints.length + ' endpoints');
+                    return endpoints;
+                } catch (error) {
+                    this.log('[' + relativePath + '] Failed after retries: ' + String(error));
+                    return [];
+                }
+            });
+
+            const batchResults = await Promise.all(batchPromises);
+            for (const endpoints of batchResults) {
+                results.push(...endpoints);
+            }
+        }
+
+        this.endpoints.push(...results);
 
         // Save API reference
         this.saveAPIReference(workspacePath);
         
         progress?.report({ 
-            message: `✅ API Reference: ${this.endpoints.length} endpoints documented` 
+            message: 'API Reference: ' + this.endpoints.length + ' endpoints documented' 
         });
     }
 
     /**
-     * Check if file is likely to contain API routes
+     * Recursively scan directories specified in apiRoutes
      */
-    private isLikelyRouteFile(filePath: string): boolean {
-        const fileName = path.basename(filePath).toLowerCase();
-        const dirName = path.dirname(filePath).toLowerCase();
+    private async scanApiRoutesDirectories(
+        workspacePath: string, 
+        apiRoutes: string[]
+    ): Promise<Array<{ fullPath: string; relativePath: string }>> {
+        const files: Array<{ fullPath: string; relativePath: string }> = [];
+        
+        for (const routeDir of apiRoutes) {
+            const fullDir = path.join(workspacePath, routeDir);
+            this.log('  Scanning: ' + routeDir);
+            
+            if (!fs.existsSync(fullDir)) {
+                this.log('  Directory not found: ' + routeDir);
+                continue;
+            }
 
-        // Common route file patterns
-        const patterns = [
-            /routes?\.(py|ts|js|java|cs)$/,
-            /controllers?\.(py|ts|js|java|cs)$/,
-            /endpoints?\.(py|ts|js)$/,
-            /api\.(py|ts|js)$/,
-            /views?\.(py|java|cs)$/,
-            /handlers?\.(py|ts|js|go)$/
-        ];
+            // Recursively find all files
+            const scanDir = (dir: string) => {
+                try {
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const fullPath = path.join(dir, entry.name);
+                        if (entry.isDirectory()) {
+                            // Skip __pycache__, node_modules, etc.
+                            if (!entry.name.startsWith('__') && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+                                scanDir(fullPath);
+                            }
+                        } else if (entry.isFile()) {
+                            // Only include source files
+                            const ext = path.extname(entry.name).toLowerCase();
+                            if (['.py', '.ts', '.js', '.tsx', '.jsx', '.java', '.cs', '.go'].includes(ext)) {
+                                files.push({
+                                    fullPath,
+                                    relativePath: path.relative(workspacePath, fullPath)
+                                });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    this.log('  Error scanning ' + dir + ': ' + String(error));
+                }
+            };
 
-        const directoryPatterns = [
-            /\/routes?\//,
-            /\/api\//,
-            /\/controllers?\//,
-            /\/endpoints?\//,
-            /\/handlers?\//
-        ];
+            scanDir(fullDir);
+        }
+        
+        return files;
+    }
 
-        return patterns.some(p => p.test(fileName)) || 
-               directoryPatterns.some(p => p.test(dirName));
+    /**
+     * Extract endpoints with retry logic
+     */
+    private async extractEndpointsWithRetry(
+        filePath: string,
+        relativePath: string,
+        content: string,
+        model: vscode.LanguageModelChat,
+        maxRetries: number
+    ): Promise<APIEndpoint[]> {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const endpoints = await this.extractEndpoints(filePath, relativePath, content, model);
+                if (endpoints.length > 0 || attempt === maxRetries) {
+                    return endpoints;
+                }
+                // If no endpoints found and not last attempt, retry
+                this.log('[' + relativePath + '] No endpoints found, retrying (' + attempt + '/' + maxRetries + ')');
+            } catch (error) {
+                if (attempt === maxRetries) {
+                    throw error;
+                }
+                this.log('[' + relativePath + '] Parse error on attempt ' + attempt + ', retrying...');
+                // Wait a bit before retrying
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+        return [];
     }
 
     /**
@@ -241,8 +309,6 @@ export class APIReferenceGenerator {
                 responseText += chunk;
             }
 
-            this.log(`[${relativePath}] Copilot response length: ${responseText.length} chars`);
-
             // Try markdown code block format first
             let jsonText = null;
             const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/);
@@ -258,21 +324,57 @@ export class APIReferenceGenerator {
             }
 
             if (!jsonText) {
-                this.log(`[${relativePath}] ⚠️ No JSON found in response. Response preview: ${responseText.substring(0, 200)}`);
+                this.log('[' + relativePath + '] No JSON found in response');
                 return [];
             }
 
-            const parsed = JSON.parse(jsonText);
+            // Try to parse, with fallback to repair common issues
+            let parsed;
+            try {
+                parsed = JSON.parse(jsonText);
+            } catch (parseError) {
+                // Aggressive JSON repair for common Copilot mistakes
+                let fixed = jsonText
+                    // Remove trailing commas
+                    .replace(/,(\s*[}\]])/g, '$1')
+                    // Add missing commas between array/object elements
+                    .replace(/}(\s*){/g, '},{')
+                    .replace(/](\s*)\[/g, '],$1[')
+                    // Fix unescaped quotes in strings (basic attempt)
+                    .replace(/": "([^"]*)"([^,}\]]*?)"/g, '": "$1\\"$2"')
+                    // Remove any duplicate commas
+                    .replace(/,+/g, ',');
+                
+                try {
+                    parsed = JSON.parse(fixed);
+                    this.log('[' + relativePath + '] Auto-repaired malformed JSON');
+                } catch (secondError) {
+                    // Last resort: try to salvage what we can by finding the endpoints array
+                    try {
+                        const endpointsMatch = jsonText.match(/"endpoints"\s*:\s*\[([\s\S]*?)\]/);
+                        if (endpointsMatch) {
+                            // Wrap in valid JSON and try again
+                            const salvaged = '{"endpoints":[' + endpointsMatch[1].replace(/,(\s*)\]/g, '$1]') + ']}';
+                            parsed = JSON.parse(salvaged);
+                            this.log('[' + relativePath + '] Salvaged endpoints from malformed JSON');
+                        } else {
+                            throw parseError; // Give up, throw original error
+                        }
+                    } catch {
+                        throw parseError;
+                    }
+                }
+            }
+
             const endpoints = (parsed.endpoints || []).map((ep: any) => ({
                 ...ep,
                 file: relativePath
             }));
             
-            this.log(`[${relativePath}] ✅ Extracted ${endpoints.length} endpoints (framework: ${framework})`);
             return endpoints;
         } catch (error) {
-            this.log(`[${relativePath}] ❌ Failed to extract endpoints: ${error instanceof Error ? error.message : String(error)}`);
-            return [];
+            this.log('[' + relativePath + '] Parse error: ' + (error instanceof Error ? error.message : String(error)));
+            throw error; // Re-throw so retry logic can handle it
         }
     }
 
@@ -292,7 +394,7 @@ export class APIReferenceGenerator {
     }
 
     /**
-     * Detect API framework
+     * Detect API framework from file content
      */
     private detectFramework(content: string, language: string): string | null {
         const patterns: { [key: string]: { pattern: RegExp; name: string }[] } = {
@@ -341,7 +443,7 @@ export class APIReferenceGenerator {
         };
 
         fs.writeFileSync(apiRefPath, JSON.stringify(reference, null, 2), 'utf-8');
-        this.log(`✅ API Reference saved: ${this.endpoints.length} endpoints`);
+        this.log('API Reference saved: ' + this.endpoints.length + ' endpoints');
     }
 
     /**

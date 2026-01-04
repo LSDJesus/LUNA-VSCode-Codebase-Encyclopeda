@@ -379,7 +379,6 @@ export class CodebaseAnalyzer {
         // Generate API reference (extracts endpoints from route files)
         progress.report({ message: 'Extracting API endpoints...' });
         const apiRefGenerator = new APIReferenceGenerator();
-        apiRefGenerator.setLogger((msg: string) => this.log(msg));
         await apiRefGenerator.generateAPIReference(
             workspaceFolder.uri.fsPath,
             files.map(f => path.relative(workspaceFolder.uri.fsPath, f)),
@@ -449,7 +448,6 @@ export class CodebaseAnalyzer {
         // Regenerate analyses using existing file summaries
         progress.report({ message: 'Regenerating API reference...' });
         const apiRefGenerator = new APIReferenceGenerator();
-        apiRefGenerator.setLogger((msg: string) => this.log(msg));
         await apiRefGenerator.generateAPIReference(
             workspaceFolder.uri.fsPath,
             files.map(f => path.relative(workspaceFolder.uri.fsPath, f)),

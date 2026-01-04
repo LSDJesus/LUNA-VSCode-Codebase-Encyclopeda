@@ -1,4 +1,5 @@
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 
@@ -287,17 +288,57 @@ export class SummaryManager {
   }
 
   /**
+   * Generic helper to load JSON files from .codebase directory
+   */
+  private loadCodebaseFile(workspacePath: string, filename: string, errorContext: string): any | null {
+    const filePath = path.join(workspacePath, '.codebase', filename);
+    
+    try {
+      if (!fsSync.existsSync(filePath)) {
+        return null;
+      }
+      
+      const content = fsSync.readFileSync(filePath, 'utf-8');
+      return JSON.parse(content);
+    } catch (error) {
+      console.error(`[MCP] Error loading ${errorContext}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Get API reference
    */
   getAPIReference(workspacePath: string): any | null {
-    const apiRefPath = path.join(workspacePath, '.codebase', 'api-reference.json');
-    
-    try {
-      const content = require('fs').readFileSync(apiRefPath, 'utf-8');
-      return JSON.parse(content);
-    } catch {
-      return null;
-    }
+    return this.loadCodebaseFile(workspacePath, 'api-reference.json', 'API reference');
+  }
+
+  /**
+   * Get complexity heatmap
+   */
+  getComplexityHeatmap(workspacePath: string): any | null {
+    return this.loadCodebaseFile(workspacePath, 'complexity-heatmap.json', 'complexity heatmap');
+  }
+
+  /**
+   * Get dead code analysis
+   */
+  getDeadCodeAnalysis(workspacePath: string): any | null {
+    return this.loadCodebaseFile(workspacePath, 'dead-code-analysis.json', 'dead code analysis');
+  }
+
+  /**
+   * Get component map
+   */
+  getComponentMap(workspacePath: string): any | null {
+    return this.loadCodebaseFile(workspacePath, 'component-map.json', 'component map');
+  }
+
+  /**
+   * Get QA report
+   */
+  getQAReport(workspacePath: string): any | null {
+    return this.loadCodebaseFile(workspacePath, 'QA_REPORT.json', 'QA report');
   }
 
   private async findJsonFiles(dir: string): Promise<string[]> {
