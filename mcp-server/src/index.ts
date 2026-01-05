@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
@@ -11,13 +11,18 @@ import { SummaryManager } from './summaryManager.js';
 import { CopilotAnalyzer } from './copilotAnalyzer.js';
 import { StalenessChecker } from './stalenessChecker.js';
 import { LRUCache, CacheKeyGenerator } from './lruCache.js';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createRequire } from 'module';
 
-// Import version from package.json (ESM-compatible)
-const require = createRequire(import.meta.url);
-const { version } = require('../package.json');
+const server = new Server(
+  {
+    name: 'luna-encyclopedia',
+    version: '0.1.0',
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
 
 // Initialize managers
 const summaryManager = new SummaryManager();
@@ -254,24 +259,14 @@ const tools: Tool[] = [
   },
 ];
 
-const server = new McpServer(
-  {
-    name: 'luna-encyclopedia',
-    version: version, // Imported from package.json
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  }
-);
+// Handle tool listing
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools,
+}));
 
-// Register all tools
-for (const tool of tools) {
-  server.registerTool(tool.name, {
-    description: tool.description,
-  }, async (args: any) => {
-    const name = tool.name;
+// Handle tool execution
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
 
   try {
     switch (name) {
@@ -563,39 +558,34 @@ for (const tool of tools) {
           min_score?: number;
         };
         
-        try {
-          const heatmap = summaryManager.getComplexityHeatmap(workspace_path);
-          if (!heatmap) {
-            throw new Error('Not found');
-          }
-          
-          // Filter by min_score if provided
-          if (min_score !== undefined && min_score > 0) {
-            heatmap.complexity = heatmap.complexity.filter((item: any) => item.totalScore >= min_score);
-          }
-          
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(heatmap, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
-          console.error('[MCP] Error loading complexity heatmap:', error);
+        const heatmap = summaryManager.getComplexityHeatmap(workspace_path);
+        
+        if (!heatmap) {
           return {
             content: [
               {
                 type: 'text',
                 text: JSON.stringify({
-                  error: 'Complexity heatmap not found. Run "LUNA: Generate Codebase Summaries" first.',
-                  details: error instanceof Error ? error.message : String(error)
+                  error: 'Complexity heatmap not found. Run "LUNA: Generate Codebase Summaries" first.'
                 }, null, 2),
               },
             ],
           };
         }
+        
+        // Filter by min_score if provided
+        if (min_score !== undefined && min_score > 0 && heatmap.complexity) {
+          heatmap.complexity = heatmap.complexity.filter((item: any) => item.totalScore >= min_score);
+        }
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(heatmap, null, 2),
+            },
+          ],
+        };
       }
 
       case 'get_dead_code': {
@@ -603,21 +593,9 @@ for (const tool of tools) {
           workspace_path: string;
         };
         
-        try {
-          const deadCode = summaryManager.getDeadCodeAnalysis(workspace_path);
-          if (!deadCode) {
-            throw new Error('Not found');
-          }
-          
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(deadCode, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
+        const deadCode = summaryManager.getDeadCodeAnalysis(workspace_path);
+        
+        if (!deadCode) {
           return {
             content: [
               {
@@ -629,6 +607,15 @@ for (const tool of tools) {
             ],
           };
         }
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(deadCode, null, 2),
+            },
+          ],
+        };
       }
 
       case 'get_component_map': {
@@ -636,21 +623,9 @@ for (const tool of tools) {
           workspace_path: string;
         };
         
-        try {
-          const componentMap = summaryManager.getComponentMap(workspace_path);
-          if (!componentMap) {
-            throw new Error('Not found');
-          }
-          
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(componentMap, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
+        const componentMap = summaryManager.getComponentMap(workspace_path);
+        
+        if (!componentMap) {
           return {
             content: [
               {
@@ -662,6 +637,15 @@ for (const tool of tools) {
             ],
           };
         }
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(componentMap, null, 2),
+            },
+          ],
+        };
       }
 
       case 'get_qa_report': {
@@ -669,21 +653,9 @@ for (const tool of tools) {
           workspace_path: string;
         };
         
-        try {
-          const qaReport = summaryManager.getQAReport(workspace_path);
-          if (!qaReport) {
-            throw new Error('Not found');
-          }
-          
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(qaReport, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
+        const qaReport = summaryManager.getQAReport(workspace_path);
+        
+        if (!qaReport) {
           return {
             content: [
               {
@@ -695,6 +667,15 @@ for (const tool of tools) {
             ],
           };
         }
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(qaReport, null, 2),
+            },
+          ],
+        };
       }
 
       default:
@@ -711,8 +692,7 @@ for (const tool of tools) {
       isError: true,
     };
   }
-  });
-}
+});
 
 // Start server
 async function main() {

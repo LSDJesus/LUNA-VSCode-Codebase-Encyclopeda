@@ -2,7 +2,7 @@
   "name": "luna-codebase-encyclopedia",
   "displayName": "LUNA Codebase Encyclopedia",
   "description": "Agent-First Context API: Generate structured summaries for instant Copilot queries + Educational code breakdowns for learning",
-  "version": "1.1.4",
+  "version": "1.1.6",
   "publisher": "ai-evolution",
   "icon": "resources/icon.png",
   "repository": {
@@ -69,11 +69,13 @@
         "command": "luna-encyclopedia.previewFiles",
         "title": "LUNA: Preview Files to Summarize",
         "icon": "$(preview)"
-      },      {
+      },
+      {
         "command": "luna-encyclopedia.reregisterMCP",
         "title": "LUNA: Restart MCP Server",
         "icon": "$(sync)"
-      },      {
+      },
+      {
         "command": "luna-encyclopedia.reset",
         "title": "LUNA: Reset .codebase Directory",
         "icon": "$(trash)"
@@ -192,9 +194,20 @@
           ],
           "markdownDescription": "File extensions to analyze (without the dot). Leave empty to analyze all files matching patterns.",
           "examples": [
-            ["ts", "tsx", "js", "jsx"],
-            ["py"],
-            ["java", "scala", "kotlin"]
+            [
+              "ts",
+              "tsx",
+              "js",
+              "jsx"
+            ],
+            [
+              "py"
+            ],
+            [
+              "java",
+              "scala",
+              "kotlin"
+            ]
           ]
         },
         "luna-encyclopedia.fileTypesToExclude": {
@@ -213,8 +226,15 @@
           ],
           "markdownDescription": "File patterns to exclude (e.g., 'test.ts' or 'min.js'). Useful for excluding test files and minified code.",
           "examples": [
-            ["d.ts", "test.ts", "spec.ts"],
-            ["test.py", "mock.py"]
+            [
+              "d.ts",
+              "test.ts",
+              "spec.ts"
+            ],
+            [
+              "test.py",
+              "mock.py"
+            ]
           ]
         },
         "luna-encyclopedia.concurrentWorkers": {
