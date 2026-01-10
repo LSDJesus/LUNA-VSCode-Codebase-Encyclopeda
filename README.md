@@ -47,6 +47,7 @@ Right-click any file → "LUNA: Explain This Code"
 - ✅ Quality assurance reviews
 - 🌍 **Multi-language support (Python, TypeScript, Java, C#, Go, JavaScript)** ← NEW!
 - 🔄 **Reset command** to start fresh ← NEW!
+- 🤖 **Async worker agents for parallel task delegation** ← NEW in v1.1.15!
 
 ## Quick Start
 
@@ -100,6 +101,62 @@ Command Palette → "LUNA: Reset .codebase Directory"
 
 **Pro Tip**: LUNA automatically watches for git commits from ANY source (terminal, GitHub extension, VS Code UI, etc.) and prompts you to update summaries. No manual setup needed! 🌙
 
+## 🤖 Async Worker Agent System (v1.1.16) - TRUE AUTONOMOUS AGENTS!
+
+LUNA now features **fully autonomous worker agents** with complete tool access, enabling parallel processing and massive cost optimization.
+
+**How it works:**
+- Main AI agent (like Luna in Copilot Chat) spawns background workers
+- **Workers have FULL tool access** - they can read files, write files, search code, and use ANY VS Code tool
+- Workers run multi-turn conversations (up to 20 turns) to complete complex tasks autonomously
+- Workers see results of their actions and can adapt, retry, or fix issues
+- All while using **FREE models** (gpt-4o, gpt-4.1, raptor-mini)!
+
+**What Workers Can Do (Autonomously!):**
+- 🔍 **Read files** - Workers can examine any code they need
+- ✍️ **Write files** - Direct file creation/editing (no JSON limitations!)
+- 🔎 **Search codebase** - Find patterns, dependencies, usage examples
+- 🛠️ **Multi-step workflows** - Read → Analyze → Create → Verify → Document
+- 🔄 **Error recovery** - Workers see tool results and can retry/fix issues
+- 📊 **Query LUNA summaries** - Workers can use all LUNA tools for context
+
+**Key Benefits:**
+- ⚡ **True autonomy** - Workers complete complex tasks without supervision
+- 💰 **Zero cost** - FREE models (gpt-4o) with full agent capabilities
+- 🎯 **Better than before** - No JSON escaping issues, no file size limits
+- 🔄 **Multi-turn reasoning** - Workers can make 20+ sequential decisions
+- ⚙️ **Automatic** - No setup needed, works out of the box
+
+**Example: Autonomous Refactoring**
+```javascript
+// In Copilot Chat (Agent Mode):
+const task = await spawn_worker_agent({
+    task_type: 'refactoring',
+    prompt: `Refactor authentication to use JWT:
+    1. Read current auth implementation
+    2. Create new JWT service
+    3. Update middleware and tests
+    4. Document the changes`,
+    model: 'gpt-4o', // FREE!
+    auto_execute: true
+});
+
+// Worker autonomously:
+// - Reads src/auth/service.ts (tool call)
+// - Reads src/auth/middleware.ts (tool call)
+// - Creates src/auth/jwtService.ts (tool call)
+// - Updates middleware (tool call)
+// - Updates tests (tool call)
+// - Creates docs/AUTH_REFACTOR.md (tool call)
+// - Returns: "Refactored 4 files, updated tests, created documentation"
+//
+// Total cost: $0 | Total time: 30-60 seconds | Files modified: 6
+```
+
+**Learn more:** 
+- [docs/WORKER_AGENTS.md](docs/WORKER_AGENTS.md) - Complete guide
+- [docs/TRUE_AGENT_MODE.md](docs/TRUE_AGENT_MODE.md) - Technical deep dive
+
 ## MCP Tools for AI Agents
 
 LUNA provides these tools for Copilot Agent Mode:
@@ -123,6 +180,11 @@ LUNA provides these tools for Copilot Agent Mode:
 **Maintenance Tools:**
 - `#list_stale_summaries` - Check which files need re-summarization
 - `#analyze_file` - Generate/update summary for specific file
+
+**Worker Agent Tools (NEW in v1.1.15!):**
+- `#spawn_worker_agent` - Delegate tasks to background AI workers (FREE models!)
+- `#check_worker_status` - Poll for worker task completion
+- `#wait_for_workers` - Block until workers finish
 
 **Example Queries:**
 ```

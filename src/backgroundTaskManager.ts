@@ -156,6 +156,156 @@ export class BackgroundTaskManager {
 
         const model = models[0];
         
+        // Always try to use tool-calling mode first (models support it automatically)
+        this.log(`Worker ${task.id}: Using agent mode with tool access`);
+        await this.runWorkerWithTools(task, model);
+    }
+
+    private async runWorkerWithTools(task: BackgroundTask, model: vscode.LanguageModelChat): Promise<void> {
+        // Build context from files
+        let fileContext = '';
+        if (task.contextFiles.length > 0) {
+            fileContext = '\n\n## Context Files:\n\n';
+            
+            for (const filePath of task.contextFiles) {
+                try {
+                    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                    if (!workspaceFolder) {
+                        throw new Error('No workspace folder open');
+                    }
+                    
+                    const fullPath = vscode.Uri.joinPath(workspaceFolder.uri, filePath);
+                    const fileContent = await vscode.workspace.fs.readFile(fullPath);
+                    const content = Buffer.from(fileContent).toString('utf8');
+                    
+                    fileContext += `### ${filePath}\n\`\`\`\n${content}\n\`\`\`\n\n`;
+                } catch (error) {
+                    this.log(`Warning: Could not read context file ${filePath}: ${error}`);
+                }
+            }
+        }
+
+        // Build system prompt for tool-enabled agent
+        const systemPrompt = `You are an AI worker agent with full tool access. Execute the delegated task autonomously.
+
+Task Type: ${task.taskType}
+${task.outputFile ? `Output File: ${task.outputFile}` : ''}
+
+${fileContext}
+
+## Available Tools:
+You have access to VS Code tools for:
+- Reading files: Use when you need to see code content
+- Writing files: Use to create or update files
+- Searching workspace: Use to find files or code patterns
+- File system operations: Create directories, check file existence, etc.
+
+Use tools as needed to complete your task. When you're done, provide a summary of what you accomplished.`;
+
+        const fullPrompt = `${systemPrompt}\n\n## Task Instructions:\n${task.prompt}`;
+
+        // Start conversation with tool-calling loop
+        const messages: vscode.LanguageModelChatMessage[] = [
+            vscode.LanguageModelChatMessage.User(fullPrompt)
+        ];
+
+        const cancellationToken = new vscode.CancellationTokenSource().token;
+        const maxTurns = 20; // Prevent infinite loops
+        let turnCount = 0;
+        let finalResult = '';
+        const filesModified: string[] = [];
+
+        // Multi-turn conversation loop for tool calling
+        while (turnCount < maxTurns) {
+            turnCount++;
+            this.log(`Worker ${task.id}: Turn ${turnCount}`);
+
+            // Get available tools from VS Code and filter to worker-relevant subset
+            // Workers have a 128 tool limit, so we curate the most useful ones
+            const allTools = vscode.lm.tools;
+            const workerTools = this.filterToolsForWorkers(allTools);
+
+            // Send request with curated tools
+            const response = await model.sendRequest(messages, {
+                tools: workerTools,
+                toolMode: vscode.LanguageModelChatToolMode.Auto
+            }, cancellationToken);
+
+            let responseText = '';
+            const toolCalls: vscode.LanguageModelToolCallPart[] = [];
+
+            // Process response stream
+            for await (const part of response.stream) {
+                if (part instanceof vscode.LanguageModelTextPart) {
+                    responseText += part.value;
+                } else if (part instanceof vscode.LanguageModelToolCallPart) {
+                    toolCalls.push(part);
+                }
+            }
+
+            // If no tool calls, we're done
+            if (toolCalls.length === 0) {
+                finalResult = responseText;
+                this.log(`Worker ${task.id}: Completed in ${turnCount} turns`);
+                break;
+            }
+
+            // Add assistant message with tool calls
+            messages.push(vscode.LanguageModelChatMessage.Assistant([
+                ...toolCalls,
+                ...(responseText ? [new vscode.LanguageModelTextPart(responseText)] : [])
+            ]));
+
+            // Execute each tool call
+            const toolResults: vscode.LanguageModelToolResultPart[] = [];
+            
+            for (const toolCall of toolCalls) {
+                try {
+                    this.log(`Worker ${task.id}: Calling tool ${toolCall.name}`);
+                    
+                    const toolResult = await vscode.lm.invokeTool(
+                        toolCall.name,
+                        { 
+                            input: toolCall.input,
+                            toolInvocationToken: undefined // Workers run outside chat participant context
+                        },
+                        cancellationToken
+                    );
+
+                    // Track file modifications
+                    if (toolCall.name.includes('write') || toolCall.name.includes('create')) {
+                        const filePath = this.extractFilePathFromToolCall(toolCall);
+                        if (filePath && !filesModified.includes(filePath)) {
+                            filesModified.push(filePath);
+                        }
+                    }
+
+                    toolResults.push(new vscode.LanguageModelToolResultPart(toolCall.callId, toolResult.content));
+                } catch (error) {
+                    this.log(`Worker ${task.id}: Tool call failed: ${error}`);
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    toolResults.push(new vscode.LanguageModelToolResultPart(
+                        toolCall.callId,
+                        [new vscode.LanguageModelTextPart(`Error: ${errorMessage}`)]
+                    ));
+                }
+            }
+
+            // Add user message with tool results
+            messages.push(vscode.LanguageModelChatMessage.User(toolResults));
+        }
+
+        if (turnCount >= maxTurns) {
+            throw new Error('Worker exceeded maximum turn limit (20)');
+        }
+
+        task.result = finalResult;
+        task.filesModified = filesModified;
+    }
+
+    private async runWorkerWithJsonOutput(task: BackgroundTask, model: vscode.LanguageModelChat): Promise<void> {
+        // Fallback to old JSON output mode for models without tool support
+        
         // Build context from files
         let fileContext = '';
         if (task.contextFiles.length > 0) {
@@ -227,6 +377,99 @@ Always include "summary" describing what you accomplished.`;
         if (task.autoExecute) {
             await this.executeWorkerOutput(task, result);
         }
+    }
+
+    private extractFilePathFromToolCall(toolCall: vscode.LanguageModelToolCallPart): string | null {
+        try {
+            const input = toolCall.input as any;
+            // Try common parameter names for file paths
+            return input?.path || input?.filePath || input?.uri || input?.file || null;
+        } catch {
+            return null;
+        }
+    }
+
+    private filterToolsForWorkers(allTools: readonly vscode.LanguageModelChatTool[]): vscode.LanguageModelChatTool[] {
+        // Workers have a 128 tool limit, so filter to the most useful subset
+        const allowedToolPatterns = [
+            // VS Code built-in file operations
+            /^vscode.*read/i,
+            /^vscode.*write/i,
+            /^vscode.*create/i,
+            /^vscode.*search/i,
+            /^vscode.*find/i,
+            /^vscode.*list/i,
+            
+            // LUNA tools (all of them are useful)
+            /^mcp_lunaencyclope_get_file_summary$/i,
+            /^mcp_lunaencyclope_search_summaries$/i,
+            /^mcp_lunaencyclope_list_summaries$/i,
+            /^mcp_lunaencyclope_get_dependency_graph$/i,
+            /^mcp_lunaencyclope_analyze_file$/i,
+            /^mcp_lunaencyclope_list_stale_summaries$/i,
+            /^mcp_lunaencyclope_get_api_reference$/i,
+            /^mcp_lunaencyclope_search_endpoints$/i,
+            /^mcp_lunaencyclope_get_complexity_heatmap$/i,
+            /^mcp_lunaencyclope_get_dead_code$/i,
+            /^mcp_lunaencyclope_get_component_map$/i,
+            /^mcp_lunaencyclope_get_qa_report$/i,
+            
+            // Limited GitHub tools (only the useful ones)
+            /^mcp_github_list_branches$/i,
+            /^mcp_github_list_commits$/i,
+            /^mcp_github_get_commit$/i,
+            /^mcp_github_get_file_contents$/i,
+            
+            // Pylance tools for Python development
+            /^mcp_pylance/i
+        ];
+
+        // Exclude patterns for tools workers should NOT have
+        const excludeToolPatterns = [
+            // No worker spawning (prevent recursion)
+            /spawn.*worker/i,
+            /check.*worker.*status/i,
+            /wait.*for.*workers/i,
+            
+            // No web/fetch tools
+            /web.*search/i,
+            /fetch.*webpage/i,
+            /github.*search.*repo/i,
+            
+            // No PostgreSQL tools
+            /pgsql/i,
+            /postgres/i,
+            
+            // No container tools
+            /container/i,
+            /docker/i,
+            
+            // No agent/subagent tools
+            /agent/i,
+            /subagent/i
+        ];
+
+        const filtered = Array.from(allTools).filter(tool => {
+            const toolName = tool.name;
+            
+            // Check exclude patterns first
+            if (excludeToolPatterns.some(pattern => pattern.test(toolName))) {
+                return false;
+            }
+            
+            // Then check if it matches allowed patterns
+            return allowedToolPatterns.some(pattern => pattern.test(toolName));
+        });
+
+        this.log(`Filtered tools for workers: ${filtered.length} tools available (from ${allTools.length} total)`);
+        
+        // If we still have too many tools, log a warning
+        if (filtered.length > 128) {
+            this.log(`WARNING: Worker tools (${filtered.length}) exceed 128 limit. Some tools may not be available.`);
+            return filtered.slice(0, 128); // Take first 128
+        }
+        
+        return filtered;
     }
 
     private async executeWorkerOutput(task: BackgroundTask, result: string): Promise<void> {

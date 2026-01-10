@@ -179,33 +179,69 @@ LUNA generates structured codebase documentation optimized for AI agent consumpt
 - **Returns:** {generated, validations: {...}, overallScore, issues: [...]}
 - **Use when:** User asks "what's the quality score?" or "are there validation issues?"
 
-## Worker Agent Delegation Tools
+## Worker Agent Delegation Tools (v1.1.16 - TRUE AUTONOMOUS AGENTS!)
 
-The LUNA system supports delegating tasks to background AI worker agents, enabling parallel processing for documentation, analysis, testing, and more. These tools allow you to offload repetitive or time-consuming tasks to workers, freeing you to focus on complex reasoning and user interaction.
+**MAJOR BREAKTHROUGH:** Workers now have FULL tool access and can autonomously execute complex multi-step tasks!
+
+Workers are no longer limited to returning JSON - they are **true autonomous agents** with the same tool capabilities you have:
+- ✅ Read any file in the workspace
+- ✅ Write/create/edit files directly
+- ✅ Search the codebase
+- ✅ Use all LUNA tools (get_file_summary, search_summaries, etc.)
+- ✅ Multi-turn reasoning (up to 20 tool calls per task)
+- ✅ See results of their actions and adapt
+- ✅ ALL while using FREE models (gpt-4o)!
 
 ### `spawn_worker_agent`
-- **Purpose:** Spawn an async AI worker to handle a specific subtask
+- **Purpose:** Spawn a fully autonomous AI worker agent with complete tool access
 - **Parameters:**
   - `task_type` (string): Type of task - 'documentation', 'analysis', 'testing', 'refactoring', 'research', 'other'
-  - `prompt` (string): Detailed instructions for the worker
-  - `context_files` (array): Files to include in the worker's context
+  - `prompt` (string): High-level goal - worker will figure out the steps autonomously
+  - `context_files` (array, optional): Initial files to show the worker
   - `model` (string, optional): Model to use (default: 'gpt-4o' - FREE)
-  - `output_file` (string, optional): File path for worker output
-  - `auto_execute` (boolean, optional): Allow worker to create/edit files (default: true)
+  - `auto_execute` (boolean, optional): Always true now (workers use tools directly)
 - **Returns:** Task ID immediately (non-blocking)
-- **Use when:** You need to delegate a task that doesn't require immediate results
+- **Use when:** ANY multi-step task that doesn't require immediate user interaction
 
-**Example:**
+**What Changed (v1.1.16):**
+- **Before:** Workers returned JSON → extension parsed it → extension wrote files
+- **Now:** Workers use tools directly → read files → write files → see results → continue working
+- **Impact:** Workers can handle MUCH more complex tasks autonomously!
+
+**Example - Simple Documentation:**
 ```javascript
 const task = await spawn_worker_agent({
     task_type: 'documentation',
-    prompt: 'Document the authentication system with examples and migration guide',
-    context_files: ['src/auth/service.ts', 'src/auth/middleware.ts'],
-    model: 'gpt-4o', // FREE model!
-    output_file: 'docs/AUTH.md',
-    auto_execute: true
+    prompt: 'Document the authentication system with examples',
+    context_files: ['src/auth/service.ts'], // Optional - worker can read more if needed
+    model: 'gpt-4o' // FREE!
 });
-// Returns: { taskId: "uuid-1234", model: "gpt-4o", taskType: "documentation" }
+// Worker autonomously:
+// 1. Reads src/auth/service.ts (tool call)
+// 2. Searches for related files (tool call)
+// 3. Reads src/auth/middleware.ts (tool call)
+// 4. Creates docs/AUTH.md (tool call)
+// 5. Returns summary
+```
+
+**Example - Complex Refactoring:**
+```javascript
+const task = await spawn_worker_agent({
+    task_type: 'refactoring',
+    prompt: `Refactor authentication to use JWT tokens:
+    - Create new JWT service
+    - Update all middleware  
+    - Update tests
+    - Document changes`,
+    model: 'gpt-4o' // FREE!
+});
+// Worker autonomously executes ~10-15 tool calls:
+// - Reads current implementation
+// - Creates new files
+// - Updates existing files
+// - Verifies changes
+// - Creates documentation
+// All without any manual intervention!
 ```
 
 ### `check_worker_status`
@@ -241,18 +277,73 @@ const results = await wait_for_workers({
 ### Decision Tree: When to Delegate vs. Do It Yourself
 
 **Delegate to Workers (spawn_worker_agent):**
-- ✅ Task is repetitive or mechanical (documentation, test generation, formatting)
-- ✅ Cost optimization is a priority (use FREE models like `gpt-4o`, `raptor-mini`)
-- ✅ Parallel processing can save time (e.g., analyze multiple modules simultaneously)
-- ✅ Task doesn't require user interaction
-- ✅ Results aren't immediately needed (can check status later)
+- ✅ Task is repetitive or mechanical (documentation, test generation, refactoring)
+- ✅ Task has clear requirements and doesn't need creative problem-solving
+- ✅ Cost optimization is desired (workers use FREE models!)
+- ✅ Parallel processing can save time
+- ✅ Task doesn't require user interaction or real-time feedback
+- ✅ Multi-step workflows (workers can read → analyze → modify → verify autonomously)
+- ✅ File operations needed (workers have full file system access now!)
 
 **Do It Yourself (use your own model):**
-- ✅ Task requires complex reasoning or creative problem-solving
-- ✅ Immediate results are critical to continue conversation
-- ✅ User is waiting for your response
-- ✅ Task involves sensitive decision-making or architecture design
-- ✅ Task requires access to tools workers don't have
+- ✅ Task requires complex creative reasoning or novel solutions
+- ✅ Immediate results needed to continue conversation
+- ✅ User is waiting for your response right now
+- ✅ Task involves critical architecture decisions
+- ✅ You need to explain reasoning to the user as you work
+
+**Note:** Since v1.1.16, workers have the SAME tool access you do! The main difference is:
+- **You:** Premium model, interactive, can chat with user
+- **Workers:** FREE model, silent execution, fully autonomous tool usage
+
+### Worker Tool Access (Curated Set - 128 Tool Limit)
+
+Workers have access to a **curated subset** of VS Code tools (due to 128 tool limit per request):
+
+**✅ File Operations:**
+- `vscode_readFile` - Read any file in workspace
+- `vscode_writeFile` - Create or update files
+- `vscode_createDirectory` - Create directories
+- `vscode_searchWorkspace` - Search for code patterns
+- `vscode_findFiles` - Find files by pattern
+- `vscode_listFiles` - List directory contents
+
+**✅ LUNA Encyclopedia Tools (ALL 12):**
+- `get_file_summary` - Get cached file analysis
+- `search_summaries` - Search across all summaries
+- `list_summaries` - List all cached summaries
+- `get_dependency_graph` - Get file relationships
+- `analyze_file` - Generate new summary
+- `list_stale_summaries` - Check outdated summaries
+- `get_api_reference` - Get all API endpoints
+- `search_endpoints` - Search API endpoints
+- `get_complexity_heatmap` - Get refactoring candidates
+- `get_dead_code` - Get unused exports
+- `get_component_map` - Get architecture grouping
+- `get_qa_report` - Get quality metrics
+
+**✅ GitHub Tools (Limited Set):**
+- `list_branches` - List repository branches
+- `list_commits` - List commit history
+- `get_commit` - Get commit details
+- `get_file_contents` - Get file from GitHub
+
+**✅ Pylance Tools (Python Development):**
+- All Pylance MCP tools for Python analysis
+
+**❌ Workers DO NOT Have Access To:**
+- Worker spawning tools (prevents infinite recursion)
+- Web search / fetch_webpage tools
+- PostgreSQL database tools
+- Container/Docker tools
+- Agent/subagent management tools
+- GitHub search_code / search_repositories
+
+**Why the restrictions?**
+1. **128 tool limit** - Keep only relevant tools for code work
+2. **Safety** - Prevent worker recursion and unrelated operations
+3. **Focus** - Workers handle code, you handle research/DB/web
+4. **Performance** - Fewer tools = faster model decisions
 
 ### Cost Optimization with Workers
 
@@ -265,26 +356,43 @@ const results = await wait_for_workers({
 Without workers:
   10 tasks × Sonnet 4.5 @ 1x = 10x cost
 
-With workers:
-  3 complex tasks × Sonnet 4.5 @ 1x = 3x cost
-  7 simple tasks × gpt-4o @ 0x (FREE) = 0x cost
-  Total: 3x cost (70% savings!)
+With workerExecution Model (NEW in v1.1.16!)
+
+**Workers use tools directly** - no JSON needed!
+
+Multi-turn execution flow:
+```
+Turn 1: Worker calls vscode_readFile('src/auth.ts')
+        → Extension executes tool → Returns file content
+
+Turn 2: Worker calls vscode_readFile('src/middleware.ts')  
+        → Extension executes tool → Returns file content
+
+Turn 3: Worker calls vscode_writeFile('docs/AUTH.md', <content>)
+        → Extension executes tool → File created
+
+Turn 4: Worker calls get_file_summary('src/utils.ts')
+        → Extension executes tool → Returns summary
+
+Turn 5: Worker calls vscode_writeFile('src/newFeature.ts', <content>)
+        → Extension executes tool → File created
+
+Turn 6: Worker returns summary text (no more tool calls)
+        → Task complete!
 ```
 
-### Worker Output Format
+**Key advantages over JSON mode:**
+- ✅ No file size limits (tools handle any content)
+- ✅ No JSON escaping issues with quotes/newlines
+- ✅ Workers see results and can adapt (error recovery!)
+- ✅ Workers can read files they discover mid-task
+- ✅ True multi-step autonomous workflows
 
-Workers return structured JSON that gets automatically parsed and executed by the extension:
-```json
-{
-  "summary": "Created comprehensive authentication docs",
-  "files": [
-    {
-      "path": "docs/AUTH.md",
-      "content": "# Authentication System\n\n..."
-    }
-  ]
-}
-```
+The extension automatically:
+1. Executes tool calls as worker requests them
+2. Feeds results back to worker for next decision
+3. Tracks all modified files
+4. Stops when worker completes (no more tool calls)
 
 The extension automatically:
 1. Parses the JSON response
