@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { SummaryTreeProvider } from './summaryTreeProvider';
 import { SummaryPanel } from './summaryPanel';
 import { CodebaseAnalyzer } from './codebaseAnalyzer';
@@ -8,10 +10,14 @@ import { SummaryPreviewGenerator } from './summaryPreviewGenerator';
 import { CodeBreakdownGenerator } from './codeBreakdownGenerator';
 import { GitCommitWatcher } from './gitCommitWatcher';
 import { PromptManager } from './promptManager';
+import { BackgroundTaskManager } from './backgroundTaskManager';
+import { ExtensionBridge } from './extensionBridge';
 
 let summaryTreeProvider: SummaryTreeProvider;
 let gitCommitWatcher: GitCommitWatcher | null = null;
 let lunaOutputChannel: vscode.OutputChannel;
+let taskManager: BackgroundTaskManager;
+let extensionBridge: ExtensionBridge;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('LUNA Codebase Encyclopedia is now active');
@@ -31,6 +37,28 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize providers
     summaryTreeProvider = new SummaryTreeProvider(context);
     const codebaseAnalyzer = new CodebaseAnalyzer(context, lunaOutputChannel);
+    taskManager = new BackgroundTaskManager(lunaOutputChannel);
+
+    // Start extension HTTP bridge for MCP server communication
+    extensionBridge = new ExtensionBridge(taskManager);
+    try {
+        const port = await extensionBridge.start();
+        lunaOutputChannel.appendLine(`🌉 Extension bridge started on port ${port}`);
+        
+        // Save port to file for MCP server to discover
+        const bridgePortFile = path.join(os.homedir(), '.luna-bridge-port');
+        fs.writeFileSync(bridgePortFile, port.toString(), 'utf8');
+        lunaOutputChannel.appendLine(`📝 Bridge port saved to ${bridgePortFile}`);
+    } catch (error) {
+        lunaOutputChannel.appendLine(`⚠️ Failed to start extension bridge: ${error}`);
+        vscode.window.showWarningMessage('LUNA worker agents unavailable: bridge failed to start');
+    }
+
+    // Start auto-cleanup timer for old tasks (runs every hour)
+    const cleanupInterval = setInterval(() => {
+        taskManager.autoCleanup();
+    }, 60 * 60 * 1000); // 1 hour
+    context.subscriptions.push({ dispose: () => clearInterval(cleanupInterval) });
 
     // Register URI handler for code navigation
     const uriHandler = CodeNavigationHandler.register(context);
@@ -307,6 +335,31 @@ export async function activate(context: vscode.ExtensionContext) {
         watcher
     );
 
+    // Register worker agent commands for MCP server
+    context.subscriptions.push(
+        vscode.commands.registerCommand('luna.submitBackgroundTask', async (taskType, prompt, options) => {
+            return await taskManager.submitTask(taskType, prompt, options);
+        }),
+        vscode.commands.registerCommand('luna.getBackgroundTask', (taskId) => {
+            return taskManager.getTaskStatus(taskId);
+        }),
+        vscode.commands.registerCommand('luna.listBackgroundTasks', (statusFilter?) => {
+            return taskManager.getAllTasks(statusFilter);
+        }),
+        vscode.commands.registerCommand('luna.waitForBackgroundTasks', async (taskIds?, timeoutSeconds?) => {
+            return await taskManager.waitForTasks(taskIds, timeoutSeconds);
+        }),
+        vscode.commands.registerCommand('luna.cancelBackgroundTask', (taskId) => {
+            return taskManager.cancelTask(taskId);
+        }),
+        vscode.commands.registerCommand('luna.clearCompletedTasks', () => {
+            return taskManager.clearCompletedTasks();
+        }),
+        vscode.commands.registerCommand('luna.getWorkerStats', () => {
+            return taskManager.getStats();
+        })
+    );
+
     // Check if workspace needs initialization (AFTER commands are registered, non-blocking)
     checkAndPromptInitialization(codebaseAnalyzer).catch(err => {
         console.error('Failed to check initialization:', err);
@@ -420,6 +473,23 @@ export function deactivate() {
     // Stop git commit watcher on deactivation
     if (gitCommitWatcher) {
         gitCommitWatcher.stop();
+    }
+    
+    // Stop extension bridge server
+    if (extensionBridge) {
+        extensionBridge.stop().catch(err => {
+            console.error('Failed to stop extension bridge:', err);
+        });
+    }
+    
+    // Clean up bridge port file
+    try {
+        const bridgePortFile = path.join(os.homedir(), '.luna-bridge-port');
+        if (fs.existsSync(bridgePortFile)) {
+            fs.unlinkSync(bridgePortFile);
+        }
+    } catch (error) {
+        console.error('Failed to clean up bridge port file:', error);
     }
     
     // Note: We don't unregister MCP server here because VS Code might just be reloading

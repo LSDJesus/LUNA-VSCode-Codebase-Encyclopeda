@@ -181,6 +181,9 @@ export class SummaryManager {
     const files = await this.findJsonFiles(docsPath);
     const results = [];
     
+    // Parse multi-word queries: split on spaces and filter empty
+    const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 0);
+    
     for (const file of files) {
       try {
         const content = await fs.readFile(file, 'utf-8');
@@ -192,10 +195,14 @@ export class SummaryManager {
             // Search in dependencies
             if (summary.summary?.dependencies) {
               const { internal, external } = summary.summary.dependencies;
-              if (internal.some((d: any) => d.path.includes(query))) {
+              if (internal.some((d: any) => 
+                keywords.some(k => d.path.toLowerCase().includes(k))
+              )) {
                 matches.push('Internal dependency');
               }
-              if (external.some((d: any) => d.package.includes(query))) {
+              if (external.some((d: any) => 
+                keywords.some(k => (d.package || d.path || '').toLowerCase().includes(k))
+              )) {
                 matches.push('External dependency');
               }
             }
@@ -205,7 +212,7 @@ export class SummaryManager {
             // Search in key components
             if (summary.summary?.keyComponents) {
               const found = summary.summary.keyComponents.filter((c: any) =>
-                c.name.toLowerCase().includes(query.toLowerCase())
+                keywords.some(k => c.name.toLowerCase().includes(k))
               );
               matches.push(...found.map((c: any) => `Component: ${c.name}`));
             }
@@ -215,16 +222,18 @@ export class SummaryManager {
             // Search in public API
             if (summary.summary?.publicAPI) {
               const found = summary.summary.publicAPI.filter((api: any) =>
-                api.signature.toLowerCase().includes(query.toLowerCase())
+                keywords.some(k => api.signature.toLowerCase().includes(k))
               );
               matches.push(...found.map((api: any) => `Export: ${api.signature}`));
             }
             break;
             
-          default: // keyword
+          default: // keyword (enhanced with multi-word OR logic)
             const jsonStr = JSON.stringify(summary).toLowerCase();
-            if (jsonStr.includes(query.toLowerCase())) {
-              matches.push('Found in summary');
+            // Match if ANY keyword appears in the summary (OR logic)
+            const matchedKeywords = keywords.filter(k => jsonStr.includes(k));
+            if (matchedKeywords.length > 0) {
+              matches.push(`Found ${matchedKeywords.length}/${keywords.length} keywords: ${matchedKeywords.join(', ')}`);
             }
         }
         
@@ -246,45 +255,84 @@ export class SummaryManager {
     workspacePath: string,
     filePath?: string
   ): Promise<any> {
-    const docsPath = this.getDocsPath(workspacePath);
-    const files = await this.findJsonFiles(docsPath);
+    const graphData = this.getDependencyGraphFile(workspacePath);
     
-    const nodes = [];
-    const edges = [];
-    
-    for (const file of files) {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
-        const summary = JSON.parse(content);
-        const sourceFile = summary.sourceFile;
-        
-        // If specific file requested, filter
-        if (filePath && sourceFile !== filePath) {
-          continue;
-        }
-        
-        nodes.push({
-          id: sourceFile,
-          purpose: summary.summary?.purpose || '',
-        });
-        
-        // Add edges for dependencies
-        if (summary.summary?.dependencies?.internal) {
-          for (const dep of summary.summary.dependencies.internal) {
-            edges.push({
-              from: sourceFile,
-              to: dep.path,
-              type: 'depends_on',
-              usage: dep.usage,
-            });
-          }
-        }
-      } catch {
-        // Skip invalid files
-      }
+    if (!graphData) {
+      return { nodes: [], edges: [] };
     }
     
-    return { nodes, edges };
+    // Handle both flat and nested graph structures
+    const graph = graphData.graph || graphData;
+    
+    // If specific file requested, return that file's dependencies and dependents
+    if (filePath) {
+      // Normalize path: convert backslashes to forward slashes, remove leading ./
+      const normalizedPath = filePath.replace(/\\/g, '/').replace(/^\.\//, '');
+      
+      // Try exact match first
+      let fileEntry = graph[normalizedPath];
+      
+      // If not found, try to find with fuzzy matching
+      if (!fileEntry) {
+        const searchKey = normalizedPath.split('/').pop();
+        const matchedKey = Object.keys(graph).find(key => 
+          key.endsWith(normalizedPath) || 
+          key.includes(normalizedPath) ||
+          key.split('/').pop() === searchKey
+        );
+        if (matchedKey) {
+          fileEntry = graph[matchedKey];
+          filePath = matchedKey; // Use the actual key from graph
+        }
+      }
+      
+      if (!fileEntry) {
+        return { 
+          nodes: [], 
+          edges: [], 
+          message: `File "${filePath}" not found in dependency graph. Available files: ${Object.keys(graph).slice(0, 5).join(', ')}...` 
+        };
+      }
+      
+      // Build nodes and edges for this file and its direct relations
+      const nodes = [
+        {
+          id: filePath,
+          exports: fileEntry.exports,
+          dependencies: fileEntry.dependencies,
+          dependents: fileEntry.dependents,
+        }
+      ];
+      
+      const edges = [];
+      
+      // Add edges for dependencies (what this file depends on)
+      if (fileEntry.dependencies?.internal) {
+        for (const dep of fileEntry.dependencies.internal) {
+          edges.push({
+            from: filePath,
+            to: dep,
+            type: 'depends_on',
+          });
+        }
+      }
+      
+      // Add edges for dependents (what depends on this file)
+      if (fileEntry.dependents) {
+        for (const dependent of fileEntry.dependents) {
+          edges.push({
+            from: dependent,
+            to: filePath,
+            type: 'used_by',
+          });
+        }
+      }
+      
+      return { nodes, edges };
+    }
+    
+    // Return full graph if no specific file requested (include metadata)
+    return graphData;
   }
 
   /**
@@ -311,6 +359,13 @@ export class SummaryManager {
    */
   getAPIReference(workspacePath: string): any | null {
     return this.loadCodebaseFile(workspacePath, 'api-reference.json', 'API reference');
+  }
+
+  /**
+   * Get dependency graph (loaded from file)
+   */
+  getDependencyGraphFile(workspacePath: string): any | null {
+    return this.loadCodebaseFile(workspacePath, 'dependency-graph.json', 'dependency graph');
   }
 
   /**

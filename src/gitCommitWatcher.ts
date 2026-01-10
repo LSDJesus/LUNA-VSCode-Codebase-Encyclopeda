@@ -119,54 +119,15 @@ export class GitCommitWatcher {
                 return;
             }
 
-            // Get list of summary files
-            const summaryFiles = fs.readdirSync(codebasePath)
-                .filter(f => f.endsWith('.md') || f.endsWith('.json'));
-
-            if (summaryFiles.length === 0) {
-                return; // No summaries yet
+            // Discover source files in the workspace
+            const sourceFiles = await this.discoverSourceFiles();
+            
+            if (sourceFiles.length === 0) {
+                return; // No files to check
             }
 
-            // Detect stale files
-            const staleInfo: StalenessInfo[] = [];
-            for (const summaryFile of summaryFiles) {
-                const summaryPath = path.join(codebasePath, summaryFile);
-                
-                // Find corresponding source file
-                const isIndexFile = summaryFile.includes('.index.');
-                if (isIndexFile) {
-                    continue; // Skip index files
-                }
-
-                const sourceFileName = summaryFile
-                    .replace('.md', '').replace('.json', '')
-                    .replace('.summary', '');
-                
-                // Search for source file (simplified - looks in common locations)
-                const possibleSourcePaths = [
-                    path.join(this.workspacePath, sourceFileName),
-                    path.join(this.workspacePath, 'src', sourceFileName),
-                    path.join(this.workspacePath, 'lib', sourceFileName)
-                ];
-
-                for (const sourcePath of possibleSourcePaths) {
-                    if (fs.existsSync(sourcePath)) {
-                        const summaryStats = fs.statSync(summaryPath);
-                        const sourceStats = fs.statSync(sourcePath);
-                        
-                        if (sourceStats.mtime > summaryStats.mtime) {
-                            staleInfo.push({
-                                filePath: sourceFileName,
-                                summaryTimestamp: summaryStats.mtime,
-                                fileLastModified: sourceStats.mtime,
-                                isStale: true,
-                                reason: 'File modified after summary'
-                            });
-                        }
-                        break;
-                    }
-                }
-            }
+            // Use StalenessDetector to check for stale summaries
+            const staleInfo = StalenessDetector.getStaleFiles(this.workspacePath, sourceFiles);
 
             if (staleInfo.length > 0) {
                 const fileList = staleInfo.slice(0, 5).map(f => path.basename(f.filePath)).join(', ');
@@ -185,6 +146,46 @@ export class GitCommitWatcher {
         } catch (error) {
             console.error('[LUNA] Error checking for stale summaries:', error);
         }
+    }
+
+    /**
+     * Discover source files in the workspace
+     */
+    private async discoverSourceFiles(): Promise<string[]> {
+        const files: string[] = [];
+        const extensions = ['.ts', '.js', '.tsx', '.jsx', '.py', '.java', '.cs', '.go', '.cpp', '.c', '.rb', '.php'];
+        
+        const walkDir = (dir: string, maxDepth: number = 10, currentDepth: number = 0): void => {
+            if (currentDepth > maxDepth) return;
+            if (!fs.existsSync(dir)) return;
+
+            try {
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                
+                for (const entry of entries) {
+                    // Skip common exclusions
+                    if (['node_modules', '.git', 'dist', 'build', 'out', '.codebase', '.vscode', '.idea'].includes(entry.name)) {
+                        continue;
+                    }
+
+                    const fullPath = path.join(dir, entry.name);
+                    
+                    if (entry.isDirectory()) {
+                        walkDir(fullPath, maxDepth, currentDepth + 1);
+                    } else if (entry.isFile()) {
+                        const ext = path.extname(entry.name);
+                        if (extensions.includes(ext)) {
+                            files.push(fullPath);
+                        }
+                    }
+                }
+            } catch (error) {
+                // Skip directories we can't read
+            }
+        };
+
+        walkDir(this.workspacePath);
+        return files;
     }
 
     /**

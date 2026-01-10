@@ -2,7 +2,7 @@
   "name": "luna-codebase-encyclopedia",
   "displayName": "LUNA Codebase Encyclopedia",
   "description": "Agent-First Context API: Generate structured summaries for instant Copilot queries + Educational code breakdowns for learning",
-  "version": "1.1.6",
+  "version": "1.1.12",
   "publisher": "ai-evolution",
   "icon": "resources/icon.png",
   "repository": {
@@ -287,6 +287,48 @@
           },
           "default": [],
           "markdownDescription": "Additional directories to search for API route files. Use this if your routes don't match standard patterns (e.g., `[\"src/api\", \"backend/routes\", \"server/handlers\"]`). Paths are relative to workspace root."
+        },
+        "luna-encyclopedia.defaultWorkerModel": {
+          "type": "string",
+          "default": "gpt-4o",
+          "enum": [
+            "gpt-4o",
+            "gpt-4.1",
+            "gpt-5-mini",
+            "raptor-mini",
+            "claude-haiku-4.5",
+            "gemini-3-flash"
+          ],
+          "enumDescriptions": [
+            "GPT-4o - FREE, recommended default for workers",
+            "GPT-4.1 - FREE, solid performance",
+            "GPT-5 Mini - FREE, fast for simple tasks",
+            "Raptor Mini - FREE, Microsoft's efficient model",
+            "Claude Haiku 4.5 - PAID (0.33x), fastest Claude",
+            "Gemini 3 Flash - PAID (0.33x), Google's fast model"
+          ],
+          "markdownDescription": "Default model for background worker agents spawned by Copilot Chat.\n\n**Recommended: gpt-4o** (FREE, good quality)\n\nWorker agents handle delegated tasks like:\n- Documentation generation\n- Test creation\n- Code search and summarization\n- Repetitive file edits\n\nUse FREE models to minimize cost while main agent (you) uses premium model."
+        },
+        "luna-encyclopedia.workerConcurrencyLimit": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "markdownDescription": "Maximum number of background worker agents running simultaneously.\n\n- **1-2**: Conservative, minimal API load\n- **3**: Recommended default\n- **5-10**: Aggressive parallelization\n\n**Default: 3**"
+        },
+        "luna-encyclopedia.workerTimeoutSeconds": {
+          "type": "number",
+          "default": 300,
+          "minimum": 30,
+          "maximum": 1800,
+          "markdownDescription": "Maximum time (in seconds) a worker agent can run before timing out.\n\n**Default: 300 seconds (5 minutes)**"
+        },
+        "luna-encyclopedia.workerAutoCleanupHours": {
+          "type": "number",
+          "default": 24,
+          "minimum": 1,
+          "maximum": 168,
+          "markdownDescription": "Automatically delete completed worker task results after this many hours.\n\n**Default: 24 hours**"
         }
       }
     }

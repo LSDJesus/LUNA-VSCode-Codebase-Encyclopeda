@@ -28,6 +28,51 @@ const server = new Server(
 const summaryManager = new SummaryManager();
 const copilotAnalyzer = new CopilotAnalyzer();
 
+// Extension bridge configuration (HTTP server running in VS Code extension)
+// Port is dynamically assigned and stored in a file by the extension
+let extensionBridgePort: number | null = null;
+
+// Helper to call extension HTTP bridge
+async function callExtensionBridge(endpoint: string, method: 'GET' | 'POST', body?: any): Promise<any> {
+  if (!extensionBridgePort) {
+    // Try to load the port from the extension's config file
+    const fs = await import('fs');
+    const path = await import('path');
+    const os = await import('os');
+    
+    const bridgeConfigPath = path.join(os.homedir(), '.luna-bridge-port');
+    
+    try {
+      const portStr = fs.readFileSync(bridgeConfigPath, 'utf8').trim();
+      extensionBridgePort = parseInt(portStr, 10);
+    } catch (error) {
+      throw new Error('Extension bridge not available. Make sure LUNA extension is running in VS Code.');
+    }
+  }
+
+  const url = `http://127.0.0.1:${extensionBridgePort}${endpoint}`;
+  
+  const options: any = {
+    method,
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, options);
+  
+  if (!response.ok) {
+    throw new Error(`Bridge call failed: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+
 // Initialize caches (100 entries each, auto-LRU)
 const fileSummaryCache = new LRUCache<string, any>(100);
 const searchResultsCache = new LRUCache<string, any>(100);
@@ -241,6 +286,76 @@ const tools: Tool[] = [
         },
       },
       required: ['workspace_path'],
+    },
+  },
+  {
+    name: 'spawn_worker_agent',
+    description: 'Spawn an async AI worker to handle a subtask (documentation, analysis, testing, etc.). Worker runs in Agent Mode with full tool access. Returns task ID immediately. Use this to parallelize grunt work and speed up complex multi-step requests. Workers use cheaper models (Haiku @ 0.33x or free models) for cost optimization.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_type: {
+          type: 'string',
+          enum: ['documentation', 'analysis', 'testing', 'refactoring', 'research', 'other'],
+          description: 'Type of work: documentation, analysis, testing, refactoring, research, or other',
+        },
+        prompt: {
+          type: 'string',
+          description: 'Detailed instructions for the worker agent. Be specific about expected output format and any files to create/edit.',
+        },
+        context_files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of file paths (relative to workspace) the worker needs access to. Files will be read and injected into context.',
+        },
+        model: {
+          type: 'string',
+          enum: ['gpt-4o', 'gpt-4.1', 'gpt-5-mini', 'raptor-mini', 'claude-3.5-haiku', 'o1-preview', 'o1-mini'],
+          description: 'Copilot model to use. Recommended: "gpt-4o" or "gpt-4.1" (FREE), "claude-3.5-haiku" (0.33x cost). Default from settings.',
+        },
+        output_file: {
+          type: 'string',
+          description: 'Optional: File path (relative to workspace) to write worker results to (e.g., "docs/ARCHITECTURE.md"). Worker will create/update this file.',
+        },
+        auto_execute: {
+          type: 'boolean',
+          description: 'Allow worker to autonomously create/edit files. If false, worker returns suggestions only. Default: true',
+          default: true,
+        },
+      },
+      required: ['task_type', 'prompt'],
+    },
+  },
+  {
+    name: 'check_worker_status',
+    description: 'Check status of background worker agent(s). Returns current state, progress, and results if completed. Use this to poll for completion without blocking.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'Specific task ID to check. If omitted, returns status of all workers.',
+        },
+      },
+    },
+  },
+  {
+    name: 'wait_for_workers',
+    description: 'Block until specified worker(s) complete. Use when you need results before proceeding with next steps. Returns completed tasks with full results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Task IDs to wait for. If omitted, waits for ALL active workers.',
+        },
+        timeout_seconds: {
+          type: 'number',
+          description: 'Max wait time in seconds. Returns partial results if timeout reached. Default: 60',
+          default: 60,
+        },
+      },
     },
   },
   {
@@ -491,10 +606,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const results = apiRef.endpoints.filter((ep: any) => {
           if (searchTarget === 'all') {
             return (
-              ep.path.toLowerCase().includes(queryLower) ||
+              ep.path?.toLowerCase().includes(queryLower) ||
               ep.description?.toLowerCase().includes(queryLower) ||
-              ep.handler.toLowerCase().includes(queryLower) ||
-              ep.responseSchema?.type.toLowerCase().includes(queryLower) ||
+              ep.handler?.toLowerCase().includes(queryLower) ||
+              ep.responseSchema?.type?.toLowerCase().includes(queryLower) ||
               ep.requestSchema?.type?.toLowerCase().includes(queryLower)
             );
           }
@@ -539,7 +654,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           file_path?: string;
         };
 
-        // get_dependency_graph doesn't use cache (full graph computation)
+        // Load the actual dependency-graph.json file if no specific file requested
+        if (!file_path) {
+          const graph = summaryManager.getDependencyGraphFile(workspace_path);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(graph, null, 2),
+              },
+            ],
+          };
+        }
+
+        // If specific file requested, compute filtered graph
         const graph = await summaryManager.getDependencyGraph(workspace_path, file_path);
         
         return {
@@ -613,6 +741,87 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: JSON.stringify(deadCode, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'spawn_worker_agent': {
+        const { task_type, prompt, context_files, model, output_file, auto_execute } = args as {
+          task_type: string;
+          prompt: string;
+          context_files?: string[];
+          model?: string;
+          output_file?: string;
+          auto_execute?: boolean;
+        };
+        
+        // Call extension bridge to spawn worker
+        const result = await callExtensionBridge('/api/spawn-worker', 'POST', {
+          taskType: task_type,
+          prompt,
+          contextFiles: context_files,
+          model,
+          outputFile: output_file,
+          autoExecute: auto_execute
+        });
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'check_worker_status': {
+        const { task_id } = args as { task_id?: string };
+        
+        if (task_id) {
+          // Get specific task status
+          const task = await callExtensionBridge(`/api/worker-status?taskId=${task_id}`, 'GET');
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(task, null, 2),
+              },
+            ],
+          };
+        } else {
+          // Get all tasks
+          const result = await callExtensionBridge('/api/list-workers', 'GET');
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        }
+      }
+
+      case 'wait_for_workers': {
+        const { task_ids, timeout_seconds } = args as {
+          task_ids?: string[];
+          timeout_seconds?: number;
+        };
+        
+        const result = await callExtensionBridge('/api/wait-for-workers', 'POST', {
+          taskIds: task_ids,
+          timeoutSeconds: timeout_seconds || 60
+        });
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
