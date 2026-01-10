@@ -179,15 +179,33 @@ export class BackgroundTaskManager {
             }
         }
 
-        // Build the worker prompt
-        const systemPrompt = `You are an AI worker agent executing a delegated task. You have full tool access (file editing, searching, terminal, etc.).
+        // Build the worker prompt with structured output requirements
+        const systemPrompt = `You are an AI worker agent executing a delegated task.
 
 Task Type: ${task.taskType}
-Auto-Execute: ${task.autoExecute ? 'YES - You can create/edit files autonomously' : 'NO - Return suggestions only'}
+Auto-Execute: ${task.autoExecute ? 'YES - Your output will be automatically saved to files' : 'NO - Return suggestions only'}
 ${task.outputFile ? `Output File: ${task.outputFile}` : ''}
 
-Your goal is to complete the task efficiently and report what you did.
-${fileContext}`;
+${fileContext}
+
+## CRITICAL: Output Format
+You MUST return your response with valid JSON. Use \\n for newlines, escape quotes as \\", and escape backslashes as \\\\.
+
+Example:
+\`\`\`json
+{
+  "summary": "Brief description of what you did",
+  "files": [
+    {
+      "path": "docs/example.md",
+      "content": "# Title\\n\\nThis is content with \\"quotes\\" and newlines."
+    }
+  ]
+}
+\`\`\`
+
+If creating multiple files, add more objects to the "files" array.
+Always include "summary" describing what you accomplished.`;
 
         const fullPrompt = `${systemPrompt}\n\n## Task Instructions:\n${task.prompt}`;
 
@@ -205,10 +223,103 @@ ${fileContext}`;
         
         task.result = result;
         
-        // Note: In Agent Mode, the worker can actually execute file operations
-        // The response will include what it did, which we capture here
-        // We could parse the response to extract filesModified, but for now
-        // we trust the worker's report
+        // If autoExecute is enabled, parse response and create files
+        if (task.autoExecute) {
+            await this.executeWorkerOutput(task, result);
+        }
+    }
+
+    private async executeWorkerOutput(task: BackgroundTask, result: string): Promise<void> {
+        try {
+            // Extract JSON from response (handle markdown code blocks)
+            const jsonMatch = result.match(/```json\s*([\s\S]*?)\s*```/);
+            if (!jsonMatch) {
+                this.log(`Worker ${task.id}: No structured output found, skipping file operations`);
+                return;
+            }
+
+            let output;
+            try {
+                output = JSON.parse(jsonMatch[1]);
+            } catch (parseError) {
+                // JSON parsing failed - likely due to unescaped characters in content
+                // Try to extract using a more lenient approach
+                this.log(`Worker ${task.id}: JSON parse failed, attempting lenient extraction`);
+                
+                // Try to extract the structure manually
+                const summaryMatch = jsonMatch[1].match(/"summary"\s*:\s*"([^"]*?)"/);
+                const pathMatch = jsonMatch[1].match(/"path"\s*:\s*"([^"]*?)"/);
+                
+                // Find content - it's everything between "content": " and the next "}
+                const contentStart = jsonMatch[1].indexOf('"content"');
+                if (contentStart === -1 || !pathMatch) {
+                    throw new Error(`Could not extract file content from malformed JSON: ${parseError}`);
+                }
+                
+                // Extract content more carefully
+                const afterContent = jsonMatch[1].substring(contentStart);
+                const contentMatch = afterContent.match(/"content"\s*:\s*"([\s\S]*?)"\s*\}/);
+                
+                if (!contentMatch) {
+                    throw new Error(`Could not extract content field: ${parseError}`);
+                }
+                
+                // Unescape the content
+                const unescapedContent = contentMatch[1]
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\\\/g, '\\');
+                
+                output = {
+                    summary: summaryMatch ? summaryMatch[1] : 'Worker completed',
+                    files: [{
+                        path: pathMatch[1],
+                        content: unescapedContent
+                    }]
+                };
+            }
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (!workspaceFolder) {
+                throw new Error('No workspace folder open');
+            }
+
+            // Execute file operations
+            const filesModified: string[] = [];
+            
+            if (output.files && Array.isArray(output.files)) {
+                for (const file of output.files) {
+                    if (!file.path || !file.content) {
+                        continue;
+                    }
+
+                    const filePath = vscode.Uri.joinPath(workspaceFolder.uri, file.path);
+                    const content = new TextEncoder().encode(file.content);
+                    
+                    // Create directory if needed
+                    const dirPath = vscode.Uri.joinPath(filePath, '..');
+                    try {
+                        await vscode.workspace.fs.createDirectory(dirPath);
+                    } catch (error) {
+                        // Directory might already exist
+                    }
+
+                    // Write file
+                    await vscode.workspace.fs.writeFile(filePath, content);
+                    filesModified.push(file.path);
+                    this.log(`Worker ${task.id}: Created/updated ${file.path}`);
+                }
+            }
+
+            task.filesModified = filesModified;
+
+            // Update result with execution confirmation
+            task.result = `${output.summary}\n\nFiles modified: ${filesModified.join(', ') || 'none'}${output.analysis ? `\n\nAnalysis:\n${output.analysis}` : ''}`;
+            
+        } catch (error) {
+            this.log(`Worker ${task.id}: Failed to execute file operations: ${error}`);
+            // Don't fail the task, just log the error
+        }
     }
 
     getTaskStatus(taskId: string): BackgroundTask | undefined {

@@ -179,6 +179,119 @@ LUNA generates structured codebase documentation optimized for AI agent consumpt
 - **Returns:** {generated, validations: {...}, overallScore, issues: [...]}
 - **Use when:** User asks "what's the quality score?" or "are there validation issues?"
 
+## Worker Agent Delegation Tools
+
+The LUNA system supports delegating tasks to background AI worker agents, enabling parallel processing for documentation, analysis, testing, and more. These tools allow you to offload repetitive or time-consuming tasks to workers, freeing you to focus on complex reasoning and user interaction.
+
+### `spawn_worker_agent`
+- **Purpose:** Spawn an async AI worker to handle a specific subtask
+- **Parameters:**
+  - `task_type` (string): Type of task - 'documentation', 'analysis', 'testing', 'refactoring', 'research', 'other'
+  - `prompt` (string): Detailed instructions for the worker
+  - `context_files` (array): Files to include in the worker's context
+  - `model` (string, optional): Model to use (default: 'gpt-4o' - FREE)
+  - `output_file` (string, optional): File path for worker output
+  - `auto_execute` (boolean, optional): Allow worker to create/edit files (default: true)
+- **Returns:** Task ID immediately (non-blocking)
+- **Use when:** You need to delegate a task that doesn't require immediate results
+
+**Example:**
+```javascript
+const task = await spawn_worker_agent({
+    task_type: 'documentation',
+    prompt: 'Document the authentication system with examples and migration guide',
+    context_files: ['src/auth/service.ts', 'src/auth/middleware.ts'],
+    model: 'gpt-4o', // FREE model!
+    output_file: 'docs/AUTH.md',
+    auto_execute: true
+});
+// Returns: { taskId: "uuid-1234", model: "gpt-4o", taskType: "documentation" }
+```
+
+### `check_worker_status`
+- **Purpose:** Check the status of worker task(s)
+- **Parameters:**
+  - `task_id` (string, optional): Specific task ID, or omit for all workers
+- **Returns:** Task object(s) with status ('queued'|'running'|'completed'|'failed'), result, filesModified, error, etc.
+- **Use when:** You need to poll for task completion or check progress
+
+**Example:**
+```javascript
+const status = await check_worker_status({ task_id: 'uuid-1234' });
+// Returns: { id: "uuid-1234", status: "completed", result: "...", filesModified: ["docs/AUTH.md"] }
+```
+
+### `wait_for_workers`
+- **Purpose:** Block until worker(s) complete
+- **Parameters:**
+  - `task_ids` (array, optional): Task IDs to wait for, or omit for all active workers
+  - `timeout_seconds` (number, optional): Max wait time (default: 60)
+- **Returns:** Array of completed tasks with results
+- **Use when:** You need results before proceeding with next steps
+
+**Example:**
+```javascript
+const results = await wait_for_workers({
+    task_ids: ['uuid-1234', 'uuid-5678'],
+    timeout_seconds: 120
+});
+// Returns: { tasks: [...], allCompleted: true }
+```
+
+### Decision Tree: When to Delegate vs. Do It Yourself
+
+**Delegate to Workers (spawn_worker_agent):**
+- ✅ Task is repetitive or mechanical (documentation, test generation, formatting)
+- ✅ Cost optimization is a priority (use FREE models like `gpt-4o`, `raptor-mini`)
+- ✅ Parallel processing can save time (e.g., analyze multiple modules simultaneously)
+- ✅ Task doesn't require user interaction
+- ✅ Results aren't immediately needed (can check status later)
+
+**Do It Yourself (use your own model):**
+- ✅ Task requires complex reasoning or creative problem-solving
+- ✅ Immediate results are critical to continue conversation
+- ✅ User is waiting for your response
+- ✅ Task involves sensitive decision-making or architecture design
+- ✅ Task requires access to tools workers don't have
+
+### Cost Optimization with Workers
+
+- **FREE models (0x cost):** `gpt-4o`, `gpt-4.1`, `gpt-5-mini`, `raptor-mini`
+- **Budget paid (0.33x cost):** `claude-haiku-4.5`, `gemini-3-flash`
+- **Typical savings:** 50-70% cost reduction on multi-step workflows
+
+**Example Cost Calculation:**
+```
+Without workers:
+  10 tasks × Sonnet 4.5 @ 1x = 10x cost
+
+With workers:
+  3 complex tasks × Sonnet 4.5 @ 1x = 3x cost
+  7 simple tasks × gpt-4o @ 0x (FREE) = 0x cost
+  Total: 3x cost (70% savings!)
+```
+
+### Worker Output Format
+
+Workers return structured JSON that gets automatically parsed and executed by the extension:
+```json
+{
+  "summary": "Created comprehensive authentication docs",
+  "files": [
+    {
+      "path": "docs/AUTH.md",
+      "content": "# Authentication System\n\n..."
+    }
+  ]
+}
+```
+
+The extension automatically:
+1. Parses the JSON response
+2. Creates directories if needed
+3. Writes files to workspace
+4. Updates task.filesModified with list of changed files
+
 ## Tool Selection Logic
 
 ```
