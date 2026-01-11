@@ -138,6 +138,11 @@ export class SummaryPreviewGenerator {
         lines.push('  - .codebase/dead-code-analysis.json');
         lines.push('  - .codebase/component-map.json');
         lines.push('  - .codebase/complexity-heatmap.json');
+        lines.push('  - .codebase/api-reference.json (if API routes detected by LLM)');
+        lines.push('');
+        lines.push('NOTE: API route detection is performed by the LLM during analysis,');
+        lines.push('not during file discovery. FastAPI, Django, Flask, Spring, ASP.NET,');
+        lines.push('and React Router endpoints will be extracted automatically if found.');
         lines.push('');
 
         return lines.join('\n');

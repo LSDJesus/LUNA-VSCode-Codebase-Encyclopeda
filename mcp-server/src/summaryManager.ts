@@ -93,7 +93,9 @@ export class SummaryManager {
   }
 
   async getSummary(workspacePath: string, filePath: string): Promise<FileSummary | null> {
-    const paths = this.getSummaryPaths(workspacePath, filePath);
+    // Normalize path separators to platform-specific (handles forward/backward slash mismatch)
+    const normalizedFilePath = filePath.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+    const paths = this.getSummaryPaths(workspacePath, normalizedFilePath);
     
     // Try branch-specific files first
     try {

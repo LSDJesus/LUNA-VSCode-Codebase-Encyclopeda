@@ -194,11 +194,29 @@ ${task.outputFile ? `Output File: ${task.outputFile}` : ''}
 ${fileContext}
 
 ## Available Tools:
-You have access to VS Code tools for:
-- Reading files: Use when you need to see code content
-- Writing files: Use to create or update files
-- Searching workspace: Use to find files or code patterns
-- File system operations: Create directories, check file existence, etc.
+
+**File Operations:**
+- vscode_readFile - Read a file (provide absolute or workspace-relative path)
+- vscode_writeFile - Create or update a file (provide absolute or workspace-relative path and content)
+- vscode_createDirectory - Create a directory
+- vscode_searchWorkspace - Search for text patterns in files
+- vscode_findFiles - Find files by glob pattern (e.g., "**/*.md", "src/**/*.ts")
+- vscode_listFiles - List files in a directory
+
+**LUNA Encyclopedia Tools (workspace_path is injected automatically):**
+- get_file_summary - Get cached analysis for a specific file (only needs file_path)
+- search_summaries - Search across all summaries (specify query and search_type)
+- get_dependency_graph - Get file relationships (optional file_path)
+- get_component_map - Get architecture grouping (no params needed)
+- get_complexity_heatmap - Get refactoring candidates (optional min_score)
+- get_dead_code - Get unused exports (no params needed)
+- get_api_reference - Get all API endpoints (optional filters)
+
+**Important Notes:**
+- For LUNA tools: You do NOT need to provide workspace_path - it's automatically injected
+- For file tools: Use workspace-relative paths (e.g., "src/auth.ts") or absolute paths
+- For glob patterns: Use ** for recursive search (e.g., "docs/**/*.md")
+- Check tool results carefully - if a tool returns empty/null, the data might not exist yet
 
 Use tools as needed to complete your task. When you're done, provide a summary of what you accomplished.`;
 
@@ -261,16 +279,23 @@ Use tools as needed to complete your task. When you're done, provide a summary o
             
             for (const toolCall of toolCalls) {
                 try {
-                    this.log(`Worker ${task.id}: Calling tool ${toolCall.name}`);
+                    this.log(`Worker ${task.id}: Calling tool ${toolCall.name} with input: ${JSON.stringify(toolCall.input).substring(0, 200)}...`);
+                    
+                    // Inject workspace_path for LUNA tools automatically
+                    const enhancedInput = this.injectWorkspacePathForLunaTool(toolCall.name, toolCall.input);
                     
                     const toolResult = await vscode.lm.invokeTool(
                         toolCall.name,
                         { 
-                            input: toolCall.input,
+                            input: enhancedInput,
                             toolInvocationToken: undefined // Workers run outside chat participant context
                         },
                         cancellationToken
                     );
+
+                    // Log result summary
+                    const resultPreview = JSON.stringify(toolResult.content).substring(0, 300);
+                    this.log(`Worker ${task.id}: Tool ${toolCall.name} returned: ${resultPreview}...`);
 
                     // Track file modifications
                     if (toolCall.name.includes('write') || toolCall.name.includes('create')) {
@@ -387,6 +412,35 @@ Always include "summary" describing what you accomplished.`;
         } catch {
             return null;
         }
+    }
+
+    private injectWorkspacePathForLunaTool(toolName: string, input: object): object {
+        // Check if this is a LUNA MCP tool
+        if (!toolName.startsWith('mcp_lunaencyclope_')) {
+            return input; // Not a LUNA tool, return as-is
+        }
+
+        const inputObj = input as any;
+        
+        // If workspace_path is already provided, don't override it
+        if (inputObj.workspace_path) {
+            return input;
+        }
+
+        // Inject workspace_path from current workspace
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            this.log('Warning: No workspace folder available to inject for LUNA tool');
+            return input;
+        }
+
+        const injected = {
+            ...inputObj,
+            workspace_path: workspaceFolder.uri.fsPath
+        };
+        
+        this.log(`Injected workspace_path for ${toolName}: ${workspaceFolder.uri.fsPath}`);
+        return injected;
     }
 
     private filterToolsForWorkers(allTools: readonly vscode.LanguageModelChatTool[]): vscode.LanguageModelChatTool[] {
