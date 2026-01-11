@@ -189,36 +189,42 @@ export class BackgroundTaskManager {
         const systemPrompt = `You are an AI worker agent with full tool access. Execute the delegated task autonomously.
 
 Task Type: ${task.taskType}
-${task.outputFile ? `Output File: ${task.outputFile}` : ''}
+${task.outputFile ? `Target Output File: ${task.outputFile}` : ''}
 
 ${fileContext}
 
 ## Available Tools:
 
 **File Operations:**
-- vscode_readFile - Read a file (provide absolute or workspace-relative path)
-- vscode_writeFile - Create or update a file (provide absolute or workspace-relative path and content)
-- vscode_createDirectory - Create a directory
-- vscode_searchWorkspace - Search for text patterns in files
-- vscode_findFiles - Find files by glob pattern (e.g., "**/*.md", "src/**/*.ts")
-- vscode_listFiles - List files in a directory
+- read - Read a file's contents (provide file path)
+- write - Create or update a file (provide path and content)
+- edit - Edit an existing file (provide path and changes)
+- execute - Run shell commands
+- search - Search for text patterns across workspace files
 
-**LUNA Encyclopedia Tools (workspace_path is injected automatically):**
-- get_file_summary - Get cached analysis for a specific file (only needs file_path)
-- search_summaries - Search across all summaries (specify query and search_type)
-- get_dependency_graph - Get file relationships (optional file_path)
-- get_component_map - Get architecture grouping (no params needed)
-- get_complexity_heatmap - Get refactoring candidates (optional min_score)
-- get_dead_code - Get unused exports (no params needed)
-- get_api_reference - Get all API endpoints (optional filters)
+**LUNA Encyclopedia Tools (workspace_path is AUTO-INJECTED!):**
+- mcp_lunaencyclope_get_file_summary - Get cached file analysis (only needs: file_path)
+- mcp_lunaencyclope_search_summaries - Search summaries (needs: query, search_type)
+- mcp_lunaencyclope_get_dependency_graph - Get file relationships (optional: file_path)
+- mcp_lunaencyclope_get_component_map - Get architecture (no params needed)
+- mcp_lunaencyclope_get_complexity_heatmap - Get refactoring candidates (optional: min_score)
+- mcp_lunaencyclope_get_dead_code - Get unused exports (no params needed)
+- mcp_lunaencyclope_get_api_reference - Get API endpoints (optional filters)
 
-**Important Notes:**
-- For LUNA tools: You do NOT need to provide workspace_path - it's automatically injected
-- For file tools: Use workspace-relative paths (e.g., "src/auth.ts") or absolute paths
-- For glob patterns: Use ** for recursive search (e.g., "docs/**/*.md")
-- Check tool results carefully - if a tool returns empty/null, the data might not exist yet
+**CRITICAL INSTRUCTIONS:**
+1. **To write a file**: Use the "write" tool with path and content parameters
+2. **For LUNA tools**: DON'T provide workspace_path - it's automatically injected!
+3. **File paths**: Use workspace-relative paths (e.g., "docs/output.md")
+4. **After gathering data**: ALWAYS write it to a file using the "write" tool
+5. **Check tool results**: If a tool returns empty/error, explain what you tried
 
-Use tools as needed to complete your task. When you're done, provide a summary of what you accomplished.`;
+**Example Workflow:**
+1. Use LUNA tools to gather information (e.g., mcp_lunaencyclope_get_component_map)
+2. Format the information into markdown/text
+3. Use "write" tool to save it (e.g., write({path: "docs/architecture.md", content: "..."}))
+4. Return summary of what you accomplished
+
+Use tools as needed. When done, provide a clear summary of what you accomplished.`;
 
         const fullPrompt = `${systemPrompt}\n\n## Task Instructions:\n${task.prompt}`;
 
@@ -446,15 +452,14 @@ Always include "summary" describing what you accomplished.`;
     private filterToolsForWorkers(allTools: readonly vscode.LanguageModelChatTool[]): vscode.LanguageModelChatTool[] {
         // Workers have a 128 tool limit, so filter to the most useful subset
         const allowedToolPatterns = [
-            // VS Code built-in file operations
-            /^vscode.*read/i,
-            /^vscode.*write/i,
-            /^vscode.*create/i,
-            /^vscode.*search/i,
-            /^vscode.*find/i,
-            /^vscode.*list/i,
+            // VS Code built-in tools (actual API names)
+            /^read$/i,           // Read files
+            /^write$/i,          // Write files
+            /^edit$/i,           // Edit files
+            /^execute$/i,        // Execute commands
+            /^search$/i,         // Search workspace
             
-            // LUNA tools (all of them are useful)
+            // LUNA tools (confirmed working with mcp_lunaencyclope_ prefix)
             /^mcp_lunaencyclope_get_file_summary$/i,
             /^mcp_lunaencyclope_search_summaries$/i,
             /^mcp_lunaencyclope_list_summaries$/i,
@@ -515,7 +520,11 @@ Always include "summary" describing what you accomplished.`;
             return allowedToolPatterns.some(pattern => pattern.test(toolName));
         });
 
+        // Log which tools are available for debugging
         this.log(`Filtered tools for workers: ${filtered.length} tools available (from ${allTools.length} total)`);
+        if (filtered.length < 20) {
+            this.log(`Available tools: ${filtered.map(t => t.name).join(', ')}`);
+        }
         
         // If we still have too many tools, log a warning
         if (filtered.length > 128) {

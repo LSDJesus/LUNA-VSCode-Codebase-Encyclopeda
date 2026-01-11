@@ -2,7 +2,7 @@
   "name": "luna-codebase-encyclopedia",
   "displayName": "LUNA Codebase Encyclopedia",
   "description": "Agent-First Context API: Generate structured summaries for instant Copilot queries + Educational code breakdowns for learning",
-  "version": "1.1.19",
+  "version": "1.1.20",
   "publisher": "ai-evolution",
   "icon": "resources/icon.png",
   "repository": {

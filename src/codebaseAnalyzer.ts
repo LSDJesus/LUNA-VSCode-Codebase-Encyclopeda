@@ -122,27 +122,38 @@ export class CodebaseAnalyzer {
             return;
         }
 
-        // Update only stale files
+        // Update only stale files using parallel processing
+        const concurrentWorkers = vscode.workspace.getConfiguration('luna-encyclopedia')
+            .get<number>('concurrentWorkers', 5);
+        const limiter = new ConcurrencyLimiter(concurrentWorkers);
         const total = report.staleFiles.length;
-        for (let i = 0; i < total; i++) {
-            if (token.isCancellationRequested) {
-                throw new Error('Cancelled by user');
-            }
+        let completed = 0;
 
-            const staleInfo = report.staleFiles[i];
-            const relPath = path.relative(workspaceFolder.uri.fsPath, staleInfo.filePath);
-            progress.report({ 
-                message: `[${i + 1}/${total}] ${relPath}`,
-                increment: (100 / total)
-            });
+        const updatePromises = report.staleFiles.map((staleInfo, index) =>
+            limiter.run(async () => {
+                if (token.isCancellationRequested) {
+                    throw new Error('Cancelled by user');
+                }
 
-            try {
-                await this.analyzeSingleFile(staleInfo.filePath, workspaceFolder.uri.fsPath, models[0]);
-            } catch (error) {
-                console.error(`Failed to update ${relPath}:`, error);
-                // Continue with next file
-            }
-        }
+                const relPath = path.relative(workspaceFolder.uri.fsPath, staleInfo.filePath);
+                progress.report({ 
+                    message: `[${completed + 1}/${total}] ${relPath} (${limiter.getRunning()} running, ${limiter.getQueued()} queued)`,
+                    increment: (100 / total)
+                });
+
+                try {
+                    await this.analyzeSingleFile(staleInfo.filePath, workspaceFolder.uri.fsPath, models[0]);
+                } catch (error) {
+                    this.log(`Failed to update ${relPath}: ${error}`);
+                    console.error(error);
+                }
+                
+                completed++;
+            })
+        );
+
+        // Wait for all updates to complete
+        await Promise.all(updatePromises);
     }
 
     async initializeWorkspace(
