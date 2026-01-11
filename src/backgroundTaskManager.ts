@@ -186,21 +186,27 @@ export class BackgroundTaskManager {
         }
 
         // Build system prompt for tool-enabled agent
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        const workspaceRoot = workspaceFolder ? workspaceFolder.uri.fsPath : '';
+        
         const systemPrompt = `You are an AI worker agent with full tool access. Execute the delegated task autonomously.
 
 Task Type: ${task.taskType}
 ${task.outputFile ? `Target Output File: ${task.outputFile}` : ''}
+Workspace Root: ${workspaceRoot}
 
 ${fileContext}
 
 ## Available Tools:
 
-**File Operations:**
-- read - Read a file's contents (provide file path)
-- write - Create or update a file (provide path and content)
-- edit - Edit an existing file (provide path and changes)
-- execute - Run shell commands
-- search - Search for text patterns across workspace files
+**File Operations (from edit/read/search toolsets):**
+- createFile - Create a new file (provide filePath and content)
+- readFile - Read a file's contents (provide filePath)
+- editFiles - Edit existing files
+- createDirectory - Create a directory (provide dirPath)
+- fileSearch - Find files by pattern
+- textSearch - Search for text across files
+- listDirectory - List directory contents
 
 **LUNA Encyclopedia Tools (workspace_path is AUTO-INJECTED!):**
 - mcp_lunaencyclope_get_file_summary - Get cached file analysis (only needs: file_path)
@@ -212,19 +218,18 @@ ${fileContext}
 - mcp_lunaencyclope_get_api_reference - Get API endpoints (optional filters)
 
 **CRITICAL INSTRUCTIONS:**
-1. **To write a file**: Use the "write" tool with path and content parameters
-2. **For LUNA tools**: DON'T provide workspace_path - it's automatically injected!
-3. **File paths**: Use workspace-relative paths (e.g., "docs/output.md")
-4. **After gathering data**: ALWAYS write it to a file using the "write" tool
-5. **Check tool results**: If a tool returns empty/error, explain what you tried
+1. **To create a file**: Use createFile tool with filePath and content parameters
+2. **File paths**: Use workspace-relative paths (e.g., "docs/output.md")
+3. **For LUNA tools**: DON'T provide workspace_path - it's automatically injected!
+4. **After gathering data**: Use createFile to save it
 
 **Example Workflow:**
 1. Use LUNA tools to gather information (e.g., mcp_lunaencyclope_get_component_map)
-2. Format the information into markdown/text
-3. Use "write" tool to save it (e.g., write({path: "docs/architecture.md", content: "..."}))
+2. Format the information into markdown/text  
+3. Use createFile: createFile({filePath: "docs/architecture.md", content: "..."})
 4. Return summary of what you accomplished
 
-Use tools as needed. When done, provide a clear summary of what you accomplished.`;
+Use tools as needed. When done, provide a clear summary.`;
 
         const fullPrompt = `${systemPrompt}\n\n## Task Instructions:\n${task.prompt}`;
 
@@ -331,8 +336,56 @@ Use tools as needed. When done, provide a clear summary of what you accomplished
         }
 
         task.result = finalResult;
+        
+        // Parse final result for file creation JSON blocks
+        if (task.autoExecute && finalResult) {
+            await this.parseAndCreateFilesFromWorkerOutput(task, finalResult, filesModified);
+        }
+        
         task.filesModified = filesModified;
     }
+
+    private async parseAndCreateFilesFromWorkerOutput(task: BackgroundTask, output: string, filesModified: string[]): Promise<void> {
+        // Look for JSON blocks with file creation instructions
+        const jsonBlockRegex = /```json\s*\n([\s\S]*?)\n```/g;
+        let match;
+        
+        while ((match = jsonBlockRegex.exec(output)) !== null) {
+            try {
+                const jsonContent = match[1];
+                const fileSpec = JSON.parse(jsonContent);
+                
+                if (fileSpec.action === 'create_file' && fileSpec.path && fileSpec.content) {
+                    await this.createFileFromWorker(fileSpec.path, fileSpec.content, filesModified);
+                }
+            } catch (error) {
+                this.log(`Failed to parse JSON block: ${error}`);
+            }
+        }
+    }
+
+    private async createFileFromWorker(relativePath: string, content: string, filesModified: string[]): Promise<void> {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            throw new Error('No workspace folder available');
+        }
+
+        const fullPath = vscode.Uri.joinPath(workspaceFolder.uri, relativePath);
+        
+        // Create parent directories if needed
+        const dirPath = vscode.Uri.joinPath(fullPath, '..');
+        try {
+            await vscode.workspace.fs.createDirectory(dirPath);
+        } catch {
+            // Directory might already exist
+        }
+
+        // Write the file
+        await vscode.workspace.fs.writeFile(fullPath, Buffer.from(content, 'utf-8'));
+        filesModified.push(fullPath.fsPath);
+        this.log(`Worker created file: ${relativePath}`);
+    }
+
 
     private async runWorkerWithJsonOutput(task: BackgroundTask, model: vscode.LanguageModelChat): Promise<void> {
         // Fallback to old JSON output mode for models without tool support
@@ -457,12 +510,14 @@ Always include "summary" describing what you accomplished.`;
     private filterToolsForWorkers(allTools: readonly vscode.LanguageModelChatTool[]): vscode.LanguageModelChatTool[] {
         // Workers have a 128 tool limit, so filter to the most useful subset
         const allowedToolPatterns = [
-            // VS Code built-in tools (actual API names)
-            /^read$/i,           // Read files
-            /^write$/i,          // Write files
-            /^edit$/i,           // Edit files
-            /^execute$/i,        // Execute commands
-            /^search$/i,         // Search workspace
+            // VS Code built-in tools (from edit, read, search toolsets)
+            /^readFile$/i,
+            /^createFile$/i,
+            /^createDirectory$/i,
+            /^listDirectory$/i,
+            /^fileSearch$/i,
+            /^textSearch$/i,
+            /^editFiles$/i,
             
             // LUNA tools (confirmed working with mcp_lunaencyclope_ prefix)
             /^mcp_lunaencyclope_get_file_summary$/i,
@@ -527,9 +582,7 @@ Always include "summary" describing what you accomplished.`;
 
         // Log which tools are available for debugging
         this.log(`Filtered tools for workers: ${filtered.length} tools available (from ${allTools.length} total)`);
-        if (filtered.length < 20) {
-            this.log(`Available tools: ${filtered.map(t => t.name).join(', ')}`);
-        }
+        this.log(`Tool names: ${filtered.map(t => t.name).join(', ')}`);
         
         // If we still have too many tools, log a warning
         if (filtered.length > 128) {
