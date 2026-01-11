@@ -428,8 +428,13 @@ Always include "summary" describing what you accomplished.`;
 
         const inputObj = input as any;
         
-        // If workspace_path is already provided, don't override it
-        if (inputObj.workspace_path) {
+        // If workspace_path is already a valid path (not placeholder), don't override it
+        // Skip injection only if it looks like a real path (absolute or relative with slashes)
+        const hasRealPath = inputObj.workspace_path && 
+                           typeof inputObj.workspace_path === 'string' &&
+                           (inputObj.workspace_path.includes('/') || inputObj.workspace_path.includes('\\'));
+        
+        if (hasRealPath) {
             return input;
         }
 
