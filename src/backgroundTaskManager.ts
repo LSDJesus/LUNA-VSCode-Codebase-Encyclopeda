@@ -218,18 +218,26 @@ ${fileContext}
 - mcp_lunaencyclope_get_api_reference - Get API endpoints (optional filters)
 
 **CRITICAL INSTRUCTIONS:**
-1. **To create a file**: Use createFile tool with filePath and content parameters
-2. **File paths**: Use workspace-relative paths (e.g., "docs/output.md")
+1. **copilot_createFile doesn't work for workers** - Instead, return file content in JSON format
+2. **JSON format**: In your final message, include a code block with json language tag containing:
+   - "action": "create_file"
+   - "path": "relative/path/to/file.md"  
+   - "content": "your file content here"
 3. **For LUNA tools**: DON'T provide workspace_path - it's automatically injected!
-4. **After gathering data**: Use createFile to save it
+4. **Multiple files**: Include multiple JSON blocks in your final message
 
-**Example Workflow:**
-1. Use LUNA tools to gather information (e.g., mcp_lunaencyclope_get_component_map)
-2. Format the information into markdown/text  
-3. Use createFile: createFile({filePath: "docs/architecture.md", content: "..."})
-4. Return summary of what you accomplished
+**Example Final Message:**
+I gathered the architecture data. Here's the file to create:
 
-Use tools as needed. When done, provide a clear summary.`;
+\`\`\`json
+{
+  "action": "create_file",
+  "path": "docs/architecture.md",
+  "content": "# Architecture\\n\\nYour content here..."
+}
+\`\`\`
+
+Use tools to gather data, then return JSON blocks for files to create.`;
 
         const fullPrompt = `${systemPrompt}\n\n## Task Instructions:\n${task.prompt}`;
 
@@ -380,8 +388,15 @@ Use tools as needed. When done, provide a clear summary.`;
             // Directory might already exist
         }
 
+        // Unescape the content (convert \\n to actual newlines, \\t to tabs, etc.)
+        const unescapedContent = content
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '\t')
+            .replace(/\\r/g, '\r')
+            .replace(/\\\\/g, '\\');
+
         // Write the file
-        await vscode.workspace.fs.writeFile(fullPath, Buffer.from(content, 'utf-8'));
+        await vscode.workspace.fs.writeFile(fullPath, Buffer.from(unescapedContent, 'utf-8'));
         filesModified.push(fullPath.fsPath);
         this.log(`Worker created file: ${relativePath}`);
     }
@@ -510,14 +525,14 @@ Always include "summary" describing what you accomplished.`;
     private filterToolsForWorkers(allTools: readonly vscode.LanguageModelChatTool[]): vscode.LanguageModelChatTool[] {
         // Workers have a 128 tool limit, so filter to the most useful subset
         const allowedToolPatterns = [
-            // VS Code built-in tools (from edit, read, search toolsets)
-            /^readFile$/i,
-            /^createFile$/i,
-            /^createDirectory$/i,
-            /^listDirectory$/i,
-            /^fileSearch$/i,
-            /^textSearch$/i,
-            /^editFiles$/i,
+            // VS Code built-in tools (actual API names have copilot_ prefix)
+            /^copilot_readFile$/i,
+            /^copilot_createFile$/i,
+            /^copilot_createDirectory$/i,
+            /^copilot_listDirectory$/i,
+            /^copilot_findFiles$/i,
+            /^copilot_findTextInFiles$/i,
+            /^copilot_editFiles$/i,
             
             // LUNA tools (confirmed working with mcp_lunaencyclope_ prefix)
             /^mcp_lunaencyclope_get_file_summary$/i,

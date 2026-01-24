@@ -217,6 +217,17 @@ export class CodebaseAnalyzer {
             fs.copyFileSync(exampleTemplatePath, templateExamplePath);
         }
 
+        // Create luna-encyclopedia.instructions.md for AI tools quick reference
+        const lunaInstructionsPath = path.join(codebasePath, 'luna-encyclopedia.instructions.md');
+        if (!fs.existsSync(lunaInstructionsPath)) {
+            progress.report({ message: 'Creating luna-encyclopedia.instructions.md...' });
+            const lunaInstructionsTemplatePath = path.join(this.context.extensionPath, 'resources', 'templates', 'luna-encyclopedia.instructions.md');
+            if (!fs.existsSync(lunaInstructionsTemplatePath)) {
+                throw new Error(`Template not found: ${lunaInstructionsTemplatePath}`);
+            }
+            fs.copyFileSync(lunaInstructionsTemplatePath, lunaInstructionsPath);
+        }
+
         progress.report({ message: 'Initialization complete!' });
         
         // Open Quick Start guide from extension resources (don't copy to workspace)
