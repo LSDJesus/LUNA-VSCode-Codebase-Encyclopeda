@@ -182,31 +182,35 @@ export class SummaryIncludeMatcher {
         
         // Check exclusion patterns
         for (const pattern of this.excludePatterns) {
-            let testPattern = pattern;
+            // Quick check for simple directory patterns (obj/, bin/, etc.)
+            // Strip trailing slash if present
+            const cleanPattern = pattern.replace(/\/$/, '');
             
-            // If pattern is a directory (ends with /) and doesn't start with **, 
-            // prepend ** to match at any level
-            if (testPattern.endsWith('/') && !testPattern.startsWith('**/')) {
-                testPattern = `**/${testPattern}`;
+            // Check if pattern is a simple directory name (no wildcards, no slashes)
+            if (!cleanPattern.includes('*') && !cleanPattern.includes('/')) {
+                // Match if path contains /dirname/ anywhere
+                if (normalizedPath.includes(`/${cleanPattern}/`) || 
+                    normalizedPath.startsWith(`${cleanPattern}/`)) {
+                    return true;
+                }
             }
             
-            // If pattern is a bare name without / or *, treat it as a directory pattern
-            // e.g., "obj" becomes "**/obj/**"
-            if (!testPattern.includes('/') && !testPattern.includes('*')) {
-                testPattern = `**/${testPattern}/**`;
-            }
-            
-            // Try matching the pattern
-            if (minimatch(normalizedPath, testPattern)) {
+            // Use minimatch for glob patterns
+            if (minimatch(normalizedPath, pattern)) {
                 return true;
             }
             
-            // For directory patterns, also try direct path matching
-            if (testPattern.endsWith('/**')) {
-                const dirPattern = testPattern.slice(0, -3); // Remove /**
-                if (normalizedPath.startsWith(`${dirPattern}/`)) {
-                    return true;
-                }
+            // Try common variations
+            if (minimatch(normalizedPath, `**/${pattern}`)) {
+                return true;
+            }
+            
+            if (minimatch(normalizedPath, `${pattern}/**`)) {
+                return true;
+            }
+            
+            if (minimatch(normalizedPath, `**/${pattern}/**`)) {
+                return true;
             }
         }
         
