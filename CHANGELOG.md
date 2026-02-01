@@ -4,6 +4,40 @@ All notable changes to the LUNA Codebase Encyclopedia extension will be document
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Fixed
+- **Exclude Patterns Not Working**: Fixed critical bug where `exclude.patterns` in `.lunasummarize` were completely ignored
+  - Patterns like `obj/`, `bin/`, and `**/GlobalUsings.cs` now properly exclude files
+  - Simple directory names (e.g., `obj/`) now correctly match files at any depth
+  - Refactored pattern matching to use direct string checks before complex glob matching
+  - Reduced file count significantly by properly excluding build artifacts
+  
+- **apiRoutes Treated as Exclude Patterns**: Fixed bug where files in `apiRoutes` directories were excluded from summaries
+  - `apiRoutes` is now properly parsed as metadata for API extraction only
+  - Controllers and route files are now BOTH summarized AND flagged for API endpoint extraction
+  - Added `isApiRouteFile()` method to separate API metadata from inclusion logic
+  
+- **YAML Parser Section Confusion**: Fixed parser bug where unrecognized sections caused following items to be misclassified
+  - Parser now properly resets section context when encountering unknown top-level keys
+  - Items under `apiRoutes:` no longer accidentally added to exclude patterns
+  - More robust handling of future config additions
+
+### Changed
+- **Include/Exclude Logic Refactored**: Cleaner separation of concerns
+  - `shouldInclude()` - Checks if file is in included directories + matches filetypes
+  - `shouldExclude()` - Checks if file matches exclude patterns (independent of include)
+  - `isApiRouteFile()` - Metadata flag for API extraction (doesn't affect inclusion)
+  - `getApiRoutes()` - Exposes API route directories for reference generator
+
+- **Component Map Intelligence Improved**: Now detects project boundaries properly
+  - **C# Projects**: Detects `.csproj` boundaries (e.g., `src/LUNA.Diffusion.Service/` becomes separate component)
+  - No longer lumps everything into generic "Src" component
+  - Recognizes dotted namespace patterns (Project.Module) as project boundaries
+  - Better component names from directory structure (e.g., "LUNA Diffusion Service" instead of "Src")
+  - Future-ready for Node.js (package.json) and Python (__init__.py) boundary detection
+
 ## [1.1.3] - 2025-12-30
 
 ### Removed

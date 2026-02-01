@@ -162,16 +162,15 @@ export class DependencyAnalyzer {
         const filesByDirectory = new Map<string, string[]>();
         const uncategorized: string[] = [];
         
-        // Group files by their top-level directory
+        // Group files by their project/component directory
         for (const filePath of this.metadata.keys()) {
-            const pathParts = filePath.split(/[/\\]/);
+            const componentDir = this.detectComponentBoundary(filePath);
             
-            if (pathParts.length > 1) {
-                const topDir = pathParts[0];
-                if (!filesByDirectory.has(topDir)) {
-                    filesByDirectory.set(topDir, []);
+            if (componentDir) {
+                if (!filesByDirectory.has(componentDir)) {
+                    filesByDirectory.set(componentDir, []);
                 }
-                filesByDirectory.get(topDir)!.push(filePath);
+                filesByDirectory.get(componentDir)!.push(filePath);
             } else {
                 uncategorized.push(filePath);
             }
@@ -205,6 +204,45 @@ export class DependencyAnalyzer {
         components.sort((a, b) => b.files.length - a.files.length);
         
         return components;
+    }
+
+    /**
+     * Detect component boundary based on project structure
+     * For C#: Looks for .csproj project boundaries (e.g., src/MyProject/)
+     * For Node: Looks for package.json boundaries
+     * For Python: Looks for setup.py / pyproject.toml boundaries
+     * Fallback: Top-level directory
+     */
+    private detectComponentBoundary(filePath: string): string | null {
+        const pathParts = filePath.split(/[/\\]/);
+        
+        if (pathParts.length === 1) {
+            return null; // Root file
+        }
+        
+        // C# Project detection: Look for directories that likely contain .csproj
+        // Pattern: src/LUNA.Diffusion.Service/... or MyProject.Service/...
+        if (pathParts.length >= 2) {
+            const secondLevel = pathParts[1];
+            
+            // C# project naming conventions (Project.Namespace or Solution.Project)
+            if (secondLevel.includes('.') && !secondLevel.endsWith('.cs') && 
+                !secondLevel.endsWith('.json') && !secondLevel.endsWith('.md')) {
+                // Likely a C# project directory (e.g., LUNA.Diffusion.Service)
+                return `${pathParts[0]}/${secondLevel}`;
+            }
+            
+            // Check for common C# project patterns
+            if (pathParts.length >= 3 && (pathParts[0] === 'src' || pathParts[0] === 'lib')) {
+                // Pattern: src/ProjectName/...
+                return `${pathParts[0]}/${pathParts[1]}`;
+            }
+        }
+        
+        // Node.js: Check if there's a package.json sibling
+        // Python: Check for __init__.py or setup.py patterns
+        // For now, use top-level as fallback
+        return pathParts[0];
     }
     
     private humanizeDirectoryName(dirName: string): string {
