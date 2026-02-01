@@ -18,6 +18,7 @@ export class SummaryIncludeMatcher {
     private includeFiles: string[] = [];
     private includeFiletypes: string[] = [];
     private excludePatterns: string[] = [];
+    private apiRoutes: string[] = [];
 
     constructor(workspacePath: string) {
         // Look for .lunasummarize inside .codebase directory
@@ -31,7 +32,7 @@ export class SummaryIncludeMatcher {
 
     private parseYamlConfig(content: string): void {
         const lines = content.split('\n');
-        let currentSection: 'include-directories' | 'include-files' | 'include-filetypes' | 'exclude-patterns' | null = null;
+        let currentSection: 'include-directories' | 'include-files' | 'include-filetypes' | 'exclude-patterns' | 'api-routes' | null = null;
         
         for (let line of lines) {
             // Remove comments
@@ -45,12 +46,15 @@ export class SummaryIncludeMatcher {
                 continue;
             }
             
-            // Detect section headers
+            // Detect top-level section headers
             if (line === 'include:') {
                 currentSection = null; // Reset, waiting for subsection
                 continue;
             } else if (line === 'exclude:') {
                 currentSection = null; // Reset, waiting for subsection
+                continue;
+            } else if (line === 'apiRoutes:') {
+                currentSection = 'api-routes';
                 continue;
             } else if (line === 'directories:') {
                 currentSection = 'include-directories';
@@ -63,6 +67,10 @@ export class SummaryIncludeMatcher {
                 continue;
             } else if (line === 'patterns:') {
                 currentSection = 'exclude-patterns';
+                continue;
+            } else if (line.match(/^[a-zA-Z]+:\s*$/)) {
+                // Unrecognized top-level section - reset and skip
+                currentSection = null;
                 continue;
             }
             
@@ -80,7 +88,10 @@ export class SummaryIncludeMatcher {
                     this.includeFiletypes.push(cleanValue);
                 } else if (currentSection === 'exclude-patterns') {
                     this.excludePatterns.push(cleanValue);
+                } else if (currentSection === 'api-routes') {
+                    this.apiRoutes.push(cleanValue);
                 }
+                // If currentSection is null (unrecognized section), silently skip the item
             }
         }
     }
@@ -101,6 +112,15 @@ export class SummaryIncludeMatcher {
         return this.includeFiletypes;
     }
 
+    public getApiRoutes(): string[] {
+        return this.apiRoutes;
+    }
+
+    /**
+     * Determines if a file should be included for analysis
+     * Flow: Check if file is in included directories + matches filetypes
+     * Note: This does NOT check exclude patterns - use shouldExclude() separately
+     */
     public shouldInclude(filePath: string, workspacePath: string): boolean {
         // Opt-in model: If no include patterns specified, reject all files
         // This forces users to explicitly declare what should be analyzed
@@ -162,10 +182,50 @@ export class SummaryIncludeMatcher {
         
         // Check exclusion patterns
         for (const pattern of this.excludePatterns) {
-            if (minimatch(normalizedPath, pattern) || 
-                minimatch(normalizedPath, `**/${pattern}`) ||
-                minimatch(normalizedPath, `${pattern}/**`) ||
-                minimatch(normalizedPath, `**/${pattern}/**`)) {
+            let testPattern = pattern;
+            
+            // If pattern is a directory (ends with /) and doesn't start with **, 
+            // prepend ** to match at any level
+            if (testPattern.endsWith('/') && !testPattern.startsWith('**/')) {
+                testPattern = `**/${testPattern}`;
+            }
+            
+            // If pattern is a bare name without / or *, treat it as a directory pattern
+            // e.g., "obj" becomes "**/obj/**"
+            if (!testPattern.includes('/') && !testPattern.includes('*')) {
+                testPattern = `**/${testPattern}/**`;
+            }
+            
+            // Try matching the pattern
+            if (minimatch(normalizedPath, testPattern)) {
+                return true;
+            }
+            
+            // For directory patterns, also try direct path matching
+            if (testPattern.endsWith('/**')) {
+                const dirPattern = testPattern.slice(0, -3); // Remove /**
+                if (normalizedPath.startsWith(`${dirPattern}/`)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Checks if a file is within an API route directory (for API extraction metadata)
+     * This is separate from inclusion - API route files are ALSO included in normal summaries
+     */
+    public isApiRouteFile(filePath: string, workspacePath: string): boolean {
+        const relativePath = path.relative(workspacePath, filePath);
+        const normalizedPath = relativePath.replace(/\\/g, '/');
+        
+        for (const routeDir of this.apiRoutes) {
+            const cleanPattern = routeDir.replace(/\/$/, '');
+            
+            if (minimatch(normalizedPath, `${cleanPattern}/**`) ||
+                normalizedPath.startsWith(`${cleanPattern}/`)) {
                 return true;
             }
         }
