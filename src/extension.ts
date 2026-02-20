@@ -318,6 +318,676 @@ export async function activate(context: vscode.ExtensionContext) {
         });
     });
 
+    // Review file changes command - opens Copilot Chat with review context
+    const reviewFileChangesCommand = vscode.commands.registerCommand('luna-encyclopedia.reviewFileChanges', async (fileUri?: vscode.Uri) => {
+        // Get file from context menu, active editor, or diff editor
+        let targetUri = fileUri;
+        if (!targetUri) {
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor) {
+                targetUri = activeEditor.document.uri;
+            }
+        }
+
+        if (!targetUri) {
+            vscode.window.showErrorMessage('No file selected. Right-click a file or open one in the editor.');
+            return;
+        }
+
+        // Handle diff editor URIs - extract the actual file path
+        let filePath = targetUri.fsPath;
+        if (targetUri.scheme === 'git') {
+            filePath = targetUri.path;
+        }
+
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('No workspace folder open.');
+            return;
+        }
+
+        const relativePath = path.relative(workspaceFolder.uri.fsPath, filePath);
+        const fileName = path.basename(filePath);
+
+        // Ask user for review focus
+        const focusOptions = [
+            { label: 'All (Comprehensive)', value: 'all', description: 'Bugs, performance, security, style, side effects' },
+            { label: 'Bugs Only', value: 'bugs', description: 'Logic errors, null handling, runtime crashes' },
+            { label: 'Performance', value: 'performance', description: 'Inefficient algorithms, memory leaks' },
+            { label: 'Security', value: 'security', description: 'Input validation, injection, auth gaps' },
+            { label: 'Style', value: 'style', description: 'Readability, naming, DRY violations' }
+        ];
+
+        const selectedFocus = await vscode.window.showQuickPick(focusOptions, {
+            placeHolder: 'Select review focus area',
+            title: `LUNA: Review Changes in ${fileName}`
+        });
+
+        if (!selectedFocus) {
+            return; // User cancelled
+        }
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `LUNA: Reviewing ${fileName} (${selectedFocus.label})...`,
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                const { execSync } = require('child_process');
+                const fsModule = require('fs');
+
+                // Get the model from LUNA settings (default: gpt-4o, FREE)
+                const config = vscode.workspace.getConfiguration('luna-encyclopedia');
+                const modelFamily = config.get<string>('copilotModel', 'gpt-4o');
+
+                progress.report({ message: `Selecting model: ${modelFamily}...` });
+                const models = await vscode.lm.selectChatModels({
+                    vendor: 'copilot',
+                    family: modelFamily
+                });
+
+                if (models.length === 0) {
+                    vscode.window.showErrorMessage(`Model "${modelFamily}" not available. Check GitHub Copilot status.`);
+                    return;
+                }
+                const model = models[0];
+
+                // Read current file content
+                let currentContent = '';
+                try {
+                    currentContent = fsModule.readFileSync(filePath, 'utf8');
+                } catch {
+                    vscode.window.showErrorMessage(`Cannot read file: ${filePath}`);
+                    return;
+                }
+
+                // Get git diff
+                progress.report({ message: 'Getting git diff...' });
+                let diffContent = '';
+                try {
+                    diffContent = execSync(`git diff -- "${relativePath}"`, {
+                        cwd: workspaceFolder.uri.fsPath,
+                        encoding: 'utf8',
+                        timeout: 10000
+                    });
+                    if (!diffContent.trim()) {
+                        diffContent = execSync(`git diff --cached -- "${relativePath}"`, {
+                            cwd: workspaceFolder.uri.fsPath,
+                            encoding: 'utf8',
+                            timeout: 10000
+                        });
+                    }
+                    if (!diffContent.trim()) {
+                        diffContent = execSync(`git diff HEAD~1 -- "${relativePath}"`, {
+                            cwd: workspaceFolder.uri.fsPath,
+                            encoding: 'utf8',
+                            timeout: 10000
+                        });
+                    }
+                } catch {
+                    // No git diff available
+                }
+
+                if (!diffContent.trim()) {
+                    const proceed = await vscode.window.showWarningMessage(
+                        `No git changes detected for ${fileName}. Review the full file instead?`,
+                        'Review Full File',
+                        'Cancel'
+                    );
+                    if (proceed !== 'Review Full File') {
+                        return;
+                    }
+                }
+
+                // Get existing LUNA summary if available
+                let summaryContext = '';
+                const summaryJsonPath = path.join(workspaceFolder.uri.fsPath, '.codebase', relativePath.replace(/\.[^.]+$/, '.json'));
+                try {
+                    if (fsModule.existsSync(summaryJsonPath)) {
+                        const summaryData = JSON.parse(fsModule.readFileSync(summaryJsonPath, 'utf8'));
+                        const purpose = summaryData.summary?.purpose || '';
+                        const components = (summaryData.summary?.keyComponents || []).map((c: any) => c.name).join(', ');
+                        if (purpose) {
+                            summaryContext = `\nLUNA Summary: ${purpose}`;
+                            if (components) { summaryContext += ` | Components: ${components}`; }
+                        }
+                    }
+                } catch {
+                    // No summary available
+                }
+
+                // Build focus instructions
+                const focusInstructions: Record<string, string> = {
+                    all: 'Perform a comprehensive review covering bugs, performance, security, style, and side effects.',
+                    bugs: 'Focus on logic errors, potential runtime errors, null/undefined handling, and off-by-one errors.',
+                    performance: 'Focus on inefficient algorithms, memory leaks, unnecessary allocations, and O(n^2)+ operations.',
+                    security: 'Focus on input validation, injection vulnerabilities, authentication gaps, and data exposure.',
+                    style: 'Focus on code readability, naming conventions, function length, DRY violations, and maintainability.'
+                };
+
+                // Build review prompt
+                let reviewPrompt = `You are a code reviewer. Review the changes to "${relativePath}".
+
+REVIEW FOCUS: ${selectedFocus.value.toUpperCase()}
+${focusInstructions[selectedFocus.value]}
+${summaryContext}
+
+`;
+                if (diffContent.trim()) {
+                    reviewPrompt += `GIT DIFF:\n\`\`\`diff\n${diffContent.trim()}\n\`\`\`\n\n`;
+                }
+
+                reviewPrompt += `CURRENT FILE:\n\`\`\`\n${currentContent}\n\`\`\`
+
+For each issue, report:
+- Severity: CRITICAL / HIGH / MEDIUM / LOW
+- Category: BUG / PERFORMANCE / SECURITY / STYLE / SIDE_EFFECT  
+- Line range
+- Description and recommendation
+
+End with a verdict: APPROVED, NEEDS_CHANGES, or BLOCKED with a brief overall assessment.
+Be thorough but fair. Only flag real issues.`;
+
+                // Call the model directly using the LM API
+                progress.report({ message: `Reviewing with ${modelFamily}...` });
+                const messages = [
+                    vscode.LanguageModelChatMessage.User(reviewPrompt)
+                ];
+
+                const cancellationTokenSource = new vscode.CancellationTokenSource();
+                // Link to the progress cancellation
+                token.onCancellationRequested(() => cancellationTokenSource.cancel());
+
+                const response = await model.sendRequest(messages, {}, cancellationTokenSource.token);
+
+                // Stream result into a string
+                let reviewResult = '';
+                for await (const part of response.stream) {
+                    if (part instanceof vscode.LanguageModelTextPart) {
+                        reviewResult += part.value;
+                    }
+                    if (token.isCancellationRequested) {
+                        break;
+                    }
+                }
+
+                if (token.isCancellationRequested) {
+                    vscode.window.showInformationMessage('Review cancelled.');
+                    return;
+                }
+
+                // Show results in an untitled document (closes clean, no files on disk)
+                const header = `# Code Review: ${relativePath}\n\n` +
+                    `**Model:** ${modelFamily} (FREE)  \n` +
+                    `**Focus:** ${selectedFocus.label}  \n` +
+                    `**Date:** ${new Date().toLocaleString()}  \n\n---\n\n`;
+
+                const doc = await vscode.workspace.openTextDocument({
+                    content: header + reviewResult,
+                    language: 'markdown'
+                });
+                await vscode.window.showTextDocument(doc, { preview: false });
+
+                lunaOutputChannel.appendLine(`[Review] ${relativePath} reviewed with ${modelFamily} (focus: ${selectedFocus.value})`);
+                vscode.window.showInformationMessage(`Review complete for ${fileName} (${modelFamily})`);
+
+            } catch (error) {
+                if (token.isCancellationRequested) {
+                    vscode.window.showInformationMessage('Review cancelled.');
+                } else {
+                    vscode.window.showErrorMessage(`Failed to review file: ${error}`);
+                }
+            }
+        });
+    });
+
+    // Project Health Report command - comprehensive project-wide analysis
+    const projectHealthReportCommand = vscode.commands.registerCommand('luna-encyclopedia.projectHealthReport', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('No workspace folder open.');
+            return;
+        }
+
+        const codebasePath = path.join(workspaceFolder.uri.fsPath, '.codebase');
+        if (!fs.existsSync(codebasePath)) {
+            const action = await vscode.window.showWarningMessage(
+                'No LUNA analysis data found. Generate summaries first?',
+                'Generate Now',
+                'Cancel'
+            );
+            if (action === 'Generate Now') {
+                vscode.commands.executeCommand('luna-encyclopedia.generateSummaries');
+            }
+            return;
+        }
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'LUNA: Generating Project Health Report...',
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                const config = vscode.workspace.getConfiguration('luna-encyclopedia');
+                const modelFamily = config.get<string>('copilotModel', 'gpt-4o');
+
+                progress.report({ message: `Selecting model: ${modelFamily}...` });
+                const models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: modelFamily });
+                if (models.length === 0) {
+                    vscode.window.showErrorMessage(`Model "${modelFamily}" not available.`);
+                    return;
+                }
+                const model = models[0];
+
+                // Load all available analysis data
+                progress.report({ message: 'Loading analysis data...' });
+                const loadJson = (fileName: string): any => {
+                    const filePath = path.join(codebasePath, fileName);
+                    if (fs.existsSync(filePath)) {
+                        try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return null; }
+                    }
+                    return null;
+                };
+
+                const complexityHeatmap = loadJson('complexity-heatmap.json');
+                const deadCode = loadJson('dead-code-analysis.json');
+                const componentMap = loadJson('component-map.json');
+                const dependencyGraph = loadJson('dependency-graph.json');
+                const qaReport = loadJson('QA_REPORT.json');
+                const apiReference = loadJson('api-reference.json');
+
+                // Compute stats from the data
+                let dataContext = '# Available Analysis Data\n\n';
+
+                if (complexityHeatmap) {
+                    const files = Array.isArray(complexityHeatmap) ? complexityHeatmap : (complexityHeatmap.files || []);
+                    const critical = files.filter((f: any) => (f.score || f.complexity) >= 8);
+                    const high = files.filter((f: any) => { const s = f.score || f.complexity; return s >= 6 && s < 8; });
+                    const totalFiles = files.length;
+                    dataContext += `## Complexity Heatmap (${totalFiles} files analyzed)\n`;
+                    dataContext += `- Critical (8-10): ${critical.length} files\n`;
+                    dataContext += `- High (6-7): ${high.length} files\n\n`;
+                    if (critical.length > 0) {
+                        dataContext += `### Critical Complexity Files:\n`;
+                        critical.slice(0, 15).forEach((f: any) => {
+                            dataContext += `- **${f.file || f.path}** - Score: ${f.score || f.complexity}/10 - ${f.reason || f.factors || ''}\n`;
+                        });
+                        dataContext += '\n';
+                    }
+                }
+
+                if (deadCode) {
+                    const entries = Array.isArray(deadCode) ? deadCode : (deadCode.unusedExports || deadCode.entries || []);
+                    dataContext += `## Dead Code Analysis (${entries.length} unused exports found)\n`;
+                    if (entries.length > 0) {
+                        entries.slice(0, 20).forEach((e: any) => {
+                            dataContext += `- **${e.export || e.name}** in ${e.file || e.sourceFile} ${e.aiVerdict ? `(AI: ${e.aiVerdict})` : ''}\n`;
+                        });
+                    }
+                    dataContext += '\n';
+                }
+
+                if (componentMap) {
+                    const components = Array.isArray(componentMap) ? componentMap : (componentMap.components || []);
+                    dataContext += `## Component Map (${components.length} components detected)\n`;
+                    components.forEach((c: any) => {
+                        const fileCount = (c.files || []).length;
+                        dataContext += `- **${c.name || c.component}** (${fileCount} files): ${c.description || c.purpose || ''}\n`;
+                    });
+                    dataContext += '\n';
+                }
+
+                if (dependencyGraph) {
+                    const nodes = dependencyGraph.nodes || [];
+                    const edges = dependencyGraph.edges || [];
+                    dataContext += `## Dependency Graph (${nodes.length} nodes, ${edges.length} edges)\n`;
+                    // Find most-depended-on files
+                    const inDegree: Record<string, number> = {};
+                    edges.forEach((e: any) => {
+                        const target = e.to || e.target;
+                        inDegree[target] = (inDegree[target] || 0) + 1;
+                    });
+                    const sorted = Object.entries(inDegree).sort((a, b) => b[1] - a[1]).slice(0, 10);
+                    if (sorted.length > 0) {
+                        dataContext += `### Most-depended-on files:\n`;
+                        sorted.forEach(([file, count]) => {
+                            dataContext += `- **${file}** (${count} dependents)\n`;
+                        });
+                    }
+                    // Detect circular dependencies
+                    const outEdges: Record<string, Set<string>> = {};
+                    edges.forEach((e: any) => {
+                        const from = e.from || e.source;
+                        const to = e.to || e.target;
+                        if (!outEdges[from]) { outEdges[from] = new Set(); }
+                        outEdges[from].add(to);
+                    });
+                    const circularPairs: string[] = [];
+                    Object.entries(outEdges).forEach(([from, tos]) => {
+                        tos.forEach(to => {
+                            if (outEdges[to]?.has(from) && from < to) {
+                                circularPairs.push(`${from} <-> ${to}`);
+                            }
+                        });
+                    });
+                    if (circularPairs.length > 0) {
+                        dataContext += `\n### Circular Dependencies Detected (${circularPairs.length}):\n`;
+                        circularPairs.slice(0, 10).forEach(pair => {
+                            dataContext += `- ${pair}\n`;
+                        });
+                    }
+                    dataContext += '\n';
+                }
+
+                if (qaReport) {
+                    dataContext += `## QA Report\n`;
+                    dataContext += `\`\`\`json\n${JSON.stringify(qaReport, null, 2).substring(0, 2000)}\n\`\`\`\n\n`;
+                }
+
+                if (apiReference) {
+                    const endpoints = apiReference.endpoints || [];
+                    dataContext += `## API Reference (${endpoints.length} endpoints)\n`;
+                    if (endpoints.length > 0) {
+                        dataContext += `Frameworks: ${(apiReference.frameworks || []).join(', ')}\n\n`;
+                    }
+                }
+
+                // Count total summary files
+                let summaryCount = 0;
+                const countJsonFiles = (dir: string) => {
+                    try {
+                        const entries = fs.readdirSync(dir, { withFileTypes: true });
+                        for (const entry of entries) {
+                            if (entry.isDirectory()) { countJsonFiles(path.join(dir, entry.name)); }
+                            else if (entry.name.endsWith('.json') && !['complexity-heatmap.json','dead-code-analysis.json','component-map.json','dependency-graph.json','QA_REPORT.json','api-reference.json'].includes(entry.name)) {
+                                summaryCount++;
+                            }
+                        }
+                    } catch { /* ignore */ }
+                };
+                countJsonFiles(codebasePath);
+                dataContext += `## Summary Coverage: ${summaryCount} files summarized\n\n`;
+
+                // Build the prompt for the AI
+                const prompt = `You are a senior software architect preparing a comprehensive project health report. Analyze the following codebase analysis data and produce a clear, actionable report.
+
+${dataContext}
+
+Generate a well-structured markdown report with these sections:
+
+# Project Health Report
+
+## Executive Summary
+A 3-4 sentence overview of the project's health. Is it in good shape? What are the biggest concerns?
+
+## Health Score
+Give the project an overall score from 1-10 and explain why. Consider:
+- Code complexity distribution
+- Dead code / unused exports  
+- Architectural organization
+- Dependency health (circular deps, coupling)
+- Test coverage gaps (if detectable)
+
+## Critical Issues (Fix Now)
+Issues that will cause bugs, crashes, or maintenance nightmares. Be specific about what file and why.
+
+## Technical Debt
+- Complexity hotspots that need refactoring
+- Dead code to remove
+- Circular dependencies to break
+- Files with too many responsibilities
+
+## Architecture Assessment
+- How well is the code organized?
+- Are components well-separated?
+- Are there clear boundaries?
+- Recommendations for improvement
+
+## Recommendations (Prioritized)
+Numbered list, most important first. Each recommendation should be:
+1. Specific (which file/component)
+2. Actionable (what exactly to do)
+3. Justified (why it matters)
+
+Be honest and specific. Don't pad with generic advice. If the codebase is in good shape, say so.`;
+
+                progress.report({ message: 'AI analyzing project health...' });
+                const cancellationTokenSource = new vscode.CancellationTokenSource();
+                token.onCancellationRequested(() => cancellationTokenSource.cancel());
+
+                const response = await model.sendRequest(
+                    [vscode.LanguageModelChatMessage.User(prompt)],
+                    {},
+                    cancellationTokenSource.token
+                );
+
+                let result = '';
+                for await (const part of response.stream) {
+                    if (part instanceof vscode.LanguageModelTextPart) {
+                        result += part.value;
+                    }
+                    if (token.isCancellationRequested) { break; }
+                }
+
+                if (token.isCancellationRequested) {
+                    vscode.window.showInformationMessage('Report generation cancelled.');
+                    return;
+                }
+
+                const header = `<!-- Generated by LUNA Codebase Encyclopedia -->\n` +
+                    `<!-- Model: ${modelFamily} (FREE) | Date: ${new Date().toLocaleString()} -->\n\n`;
+
+                const doc = await vscode.workspace.openTextDocument({
+                    content: header + result,
+                    language: 'markdown'
+                });
+                await vscode.window.showTextDocument(doc, { preview: false });
+
+                lunaOutputChannel.appendLine(`[HealthReport] Generated with ${modelFamily}`);
+                vscode.window.showInformationMessage(`Project Health Report generated (${modelFamily})`);
+
+            } catch (error) {
+                if (token.isCancellationRequested) {
+                    vscode.window.showInformationMessage('Report cancelled.');
+                } else {
+                    vscode.window.showErrorMessage(`Failed to generate health report: ${error}`);
+                }
+            }
+        });
+    });
+
+    // Suggest Refactorings command - AI-powered refactoring recommendations for high-complexity files
+    const suggestRefactoringsCommand = vscode.commands.registerCommand('luna-encyclopedia.suggestRefactorings', async (fileUri?: vscode.Uri) => {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('No workspace folder open.');
+            return;
+        }
+
+        const codebasePath = path.join(workspaceFolder.uri.fsPath, '.codebase');
+
+        // Determine which files to analyze
+        let targetFiles: { file: string; score: number; reason?: string }[] = [];
+
+        if (fileUri) {
+            // Specific file from context menu
+            const relativePath = path.relative(workspaceFolder.uri.fsPath, fileUri.fsPath);
+            targetFiles = [{ file: relativePath, score: 0, reason: 'User selected' }];
+        } else if (vscode.window.activeTextEditor) {
+            // Current file in editor
+            const relativePath = path.relative(workspaceFolder.uri.fsPath, vscode.window.activeTextEditor.document.uri.fsPath);
+            targetFiles = [{ file: relativePath, score: 0, reason: 'Current file' }];
+        } else {
+            // No file specified - use complexity heatmap to find worst files
+            const heatmapPath = path.join(codebasePath, 'complexity-heatmap.json');
+            if (!fs.existsSync(heatmapPath)) {
+                vscode.window.showWarningMessage('No complexity data found. Run "LUNA: Generate Codebase Summaries" first.');
+                return;
+            }
+            try {
+                const heatmap = JSON.parse(fs.readFileSync(heatmapPath, 'utf8'));
+                const files = Array.isArray(heatmap) ? heatmap : (heatmap.files || []);
+                targetFiles = files
+                    .filter((f: any) => (f.score || f.complexity) >= 7)
+                    .sort((a: any, b: any) => (b.score || b.complexity) - (a.score || a.complexity))
+                    .slice(0, 5)
+                    .map((f: any) => ({
+                        file: f.file || f.path,
+                        score: f.score || f.complexity,
+                        reason: f.reason || f.factors || ''
+                    }));
+            } catch {
+                vscode.window.showErrorMessage('Failed to read complexity heatmap.');
+                return;
+            }
+
+            if (targetFiles.length === 0) {
+                vscode.window.showInformationMessage('No high-complexity files found (all below 7/10). Your codebase is in great shape!');
+                return;
+            }
+
+            // Let user pick which files to refactor or do all
+            const choices = [
+                { label: `All ${targetFiles.length} files (complexity 7+)`, value: 'all', description: targetFiles.map(f => path.basename(f.file)).join(', ') },
+                ...targetFiles.map(f => ({
+                    label: `${path.basename(f.file)} (${f.score}/10)`,
+                    value: f.file,
+                    description: f.reason || ''
+                }))
+            ];
+
+            const selected = await vscode.window.showQuickPick(choices, {
+                placeHolder: 'Select file(s) to get refactoring suggestions for',
+                title: 'LUNA: Suggest Refactorings'
+            });
+
+            if (!selected) { return; }
+            if (selected.value !== 'all') {
+                targetFiles = targetFiles.filter(f => f.file === selected.value);
+            }
+        }
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `LUNA: Analyzing ${targetFiles.length} file(s) for refactoring...`,
+            cancellable: true
+        }, async (progress, token) => {
+            try {
+                const config = vscode.workspace.getConfiguration('luna-encyclopedia');
+                const modelFamily = config.get<string>('copilotModel', 'gpt-4o');
+
+                progress.report({ message: `Selecting model: ${modelFamily}...` });
+                const models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: modelFamily });
+                if (models.length === 0) {
+                    vscode.window.showErrorMessage(`Model "${modelFamily}" not available.`);
+                    return;
+                }
+                const model = models[0];
+
+                // Read file contents and LUNA summaries
+                let fileContexts = '';
+                for (const target of targetFiles) {
+                    progress.report({ message: `Reading ${path.basename(target.file)}...` });
+                    const fullPath = path.join(workspaceFolder.uri.fsPath, target.file);
+                    let content = '';
+                    try {
+                        content = fs.readFileSync(fullPath, 'utf8');
+                    } catch {
+                        fileContexts += `\n## ${target.file} (COULD NOT READ)\n\n`;
+                        continue;
+                    }
+
+                    fileContexts += `\n## ${target.file} (Complexity: ${target.score}/10)\n`;
+                    if (target.reason) { fileContexts += `Complexity factors: ${target.reason}\n`; }
+
+                    // Check for LUNA summary
+                    const summaryPath = path.join(codebasePath, target.file.replace(/\.[^.]+$/, '.json'));
+                    try {
+                        if (fs.existsSync(summaryPath)) {
+                            const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+                            fileContexts += `Purpose: ${summary.summary?.purpose || 'Unknown'}\n`;
+                            fileContexts += `Components: ${(summary.summary?.keyComponents || []).map((c: any) => c.name).join(', ')}\n`;
+                        }
+                    } catch { /* no summary */ }
+
+                    fileContexts += `\n\`\`\`\n${content}\n\`\`\`\n`;
+                }
+
+                const prompt = `You are a senior software engineer specializing in code refactoring. Analyze the following high-complexity file(s) and provide specific, actionable refactoring recommendations.
+
+${fileContexts}
+
+For EACH file, provide:
+
+### [filename] - Refactoring Plan
+
+**Current Issues:**
+- What makes this file complex
+- Specific code smells detected
+
+**Recommended Refactorings (prioritized):**
+For each refactoring:
+1. **What:** Name the refactoring pattern (Extract Method, Split Class, etc.)
+2. **Where:** Specific functions/lines to change
+3. **Why:** What problem it solves
+4. **How:** Brief description of the approach
+5. **Estimated Complexity After:** What the new score would be
+
+**Quick Wins (< 5 min):**
+- Simple improvements that make an immediate difference
+
+**Structural Changes (30+ min):**
+- Larger refactorings for significant improvement
+
+Be specific with function names and line references. Don't suggest renaming variables or adding comments -- focus on structural improvements that reduce complexity. If a file is actually well-structured despite high complexity, say so.`;
+
+                progress.report({ message: 'AI analyzing refactoring opportunities...' });
+                const cancellationTokenSource = new vscode.CancellationTokenSource();
+                token.onCancellationRequested(() => cancellationTokenSource.cancel());
+
+                const response = await model.sendRequest(
+                    [vscode.LanguageModelChatMessage.User(prompt)],
+                    {},
+                    cancellationTokenSource.token
+                );
+
+                let result = '';
+                for await (const part of response.stream) {
+                    if (part instanceof vscode.LanguageModelTextPart) {
+                        result += part.value;
+                    }
+                    if (token.isCancellationRequested) { break; }
+                }
+
+                if (token.isCancellationRequested) {
+                    vscode.window.showInformationMessage('Refactoring analysis cancelled.');
+                    return;
+                }
+
+                const header = `# Refactoring Suggestions\n\n` +
+                    `**Model:** ${modelFamily} (FREE)  \n` +
+                    `**Files Analyzed:** ${targetFiles.map(f => f.file).join(', ')}  \n` +
+                    `**Date:** ${new Date().toLocaleString()}  \n\n---\n\n`;
+
+                const doc = await vscode.workspace.openTextDocument({
+                    content: header + result,
+                    language: 'markdown'
+                });
+                await vscode.window.showTextDocument(doc, { preview: false });
+
+                lunaOutputChannel.appendLine(`[Refactoring] ${targetFiles.length} files analyzed with ${modelFamily}`);
+                vscode.window.showInformationMessage(`Refactoring suggestions generated for ${targetFiles.length} file(s)`);
+
+            } catch (error) {
+                if (token.isCancellationRequested) {
+                    vscode.window.showInformationMessage('Analysis cancelled.');
+                } else {
+                    vscode.window.showErrorMessage(`Failed to analyze: ${error}`);
+                }
+            }
+        });
+    });
+
     context.subscriptions.push(
         initCommand,
         generateCommand, 
@@ -328,6 +998,9 @@ export async function activate(context: vscode.ExtensionContext) {
         summarizeFileCommand,
         previewFilesCommand,
         generateBreakdownCommand,
+        reviewFileChangesCommand,
+        projectHealthReportCommand,
+        suggestRefactoringsCommand,
         resetCommand,
         reregisterMCPCommand,
         treeView,

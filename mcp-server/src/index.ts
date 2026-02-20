@@ -12,6 +12,72 @@ import { CopilotAnalyzer } from './copilotAnalyzer.js';
 import { StalenessChecker } from './stalenessChecker.js';
 import { LRUCache, CacheKeyGenerator } from './lruCache.js';
 
+/**
+ * Build a simple inline diff from two strings.
+ * Compares line-by-line and marks additions/removals.
+ */
+function buildInlineDiff(before: string, after: string, fileName: string): string {
+  const oldLines = before.split('\n');
+  const newLines = after.split('\n');
+
+  const diffLines: string[] = [`## Inline Diff for ${fileName}`, '', '```diff'];
+
+  // Simple LCS-based diff
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  let oi = 0;
+  let ni = 0;
+
+  while (oi < oldLines.length || ni < newLines.length) {
+    if (oi >= oldLines.length) {
+      // Remaining new lines are additions
+      diffLines.push(`+${newLines[ni]}`);
+      ni++;
+    } else if (ni >= newLines.length) {
+      // Remaining old lines are deletions
+      diffLines.push(`-${oldLines[oi]}`);
+      oi++;
+    } else if (oldLines[oi] === newLines[ni]) {
+      // Lines match
+      diffLines.push(` ${oldLines[oi]}`);
+      oi++;
+      ni++;
+    } else {
+      // Look ahead to see if old line appears soon in new (moved/inserted)
+      const newLookAhead = newLines.slice(ni, ni + 5).indexOf(oldLines[oi]);
+      const oldLookAhead = oldLines.slice(oi, oi + 5).indexOf(newLines[ni]);
+
+      if (newLookAhead > 0 && (oldLookAhead < 0 || newLookAhead <= oldLookAhead)) {
+        // Lines were inserted before the current old line
+        for (let i = 0; i < newLookAhead; i++) {
+          diffLines.push(`+${newLines[ni + i]}`);
+        }
+        ni += newLookAhead;
+      } else if (oldLookAhead > 0) {
+        // Lines were deleted before the current new line
+        for (let i = 0; i < oldLookAhead; i++) {
+          diffLines.push(`-${oldLines[oi + i]}`);
+        }
+        oi += oldLookAhead;
+      } else {
+        // Simple replacement
+        diffLines.push(`-${oldLines[oi]}`);
+        diffLines.push(`+${newLines[ni]}`);
+        oi++;
+        ni++;
+      }
+    }
+  }
+
+  diffLines.push('```');
+
+  // Add summary stats
+  const additions = diffLines.filter(l => l.startsWith('+')).length;
+  const deletions = diffLines.filter(l => l.startsWith('-')).length;
+  diffLines.push('', `Changes: +${additions} additions, -${deletions} deletions`);
+
+  return diffLines.join('\n');
+}
+
 const server = new Server(
   {
     name: 'luna-encyclopedia',
@@ -370,6 +436,43 @@ const tools: Tool[] = [
         },
       },
       required: ['workspace_path'],
+    },
+  },
+  {
+    name: 'review_file_changes',
+    description: 'Spawn an AI agent to review file changes (git diff) for bugs, logic errors, performance issues, security vulnerabilities, and unintended side effects. Perfect for validating AI-generated code edits. Returns detailed review report with severity levels.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+        file_path: {
+          type: 'string',
+          description: 'Relative path to file that was edited (e.g., "src/extension.ts")',
+        },
+        old_content: {
+          type: 'string',
+          description: 'Optional: Previous file content for comparison. If omitted, uses git diff to detect changes.',
+        },
+        new_content: {
+          type: 'string',
+          description: 'Optional: New file content. If omitted, reads current file from disk.',
+        },
+        review_focus: {
+          type: 'string',
+          enum: ['all', 'bugs', 'performance', 'security', 'style'],
+          description: 'Focus area for review. Default: "all" (comprehensive review)',
+          default: 'all',
+        },
+        model: {
+          type: 'string',
+          enum: ['gpt-4o', 'gpt-4.1', 'gpt-5-mini', 'claude-3.5-haiku'],
+          description: 'Model for review agent. Recommended: "gpt-4o" (FREE). Default from settings.',
+        },
+      },
+      required: ['workspace_path', 'file_path'],
     },
   },
 ];
@@ -882,6 +985,174 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: JSON.stringify(qaReport, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'review_file_changes': {
+        const { workspace_path, file_path, old_content, new_content, review_focus, model } = args as {
+          workspace_path: string;
+          file_path: string;
+          old_content?: string;
+          new_content?: string;
+          review_focus?: string;
+          model?: string;
+        };
+
+        // Build diff context before spawning the worker
+        let diffContext = '';
+        let currentContent = '';
+
+        // Try to read current file content
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          const fullPath = path.join(workspace_path, file_path);
+          currentContent = fs.readFileSync(fullPath, 'utf8');
+        } catch {
+          currentContent = new_content || '';
+        }
+
+        if (old_content && (new_content || currentContent)) {
+          // We have before/after content - build an inline diff
+          const before = old_content;
+          const after = new_content || currentContent;
+          diffContext = buildInlineDiff(before, after, file_path);
+        } else {
+          // Try git diff
+          try {
+            const { execSync } = await import('child_process');
+            // Unstaged changes
+            let diff = execSync(`git diff -- "${file_path}"`, {
+              cwd: workspace_path,
+              encoding: 'utf8',
+              timeout: 10000
+            });
+            // If no unstaged diff, try staged
+            if (!diff.trim()) {
+              diff = execSync(`git diff --cached -- "${file_path}"`, {
+                cwd: workspace_path,
+                encoding: 'utf8',
+                timeout: 10000
+              });
+            }
+            // If still nothing, diff against last commit
+            if (!diff.trim()) {
+              diff = execSync(`git diff HEAD~1 -- "${file_path}"`, {
+                cwd: workspace_path,
+                encoding: 'utf8',
+                timeout: 10000
+              });
+            }
+            diffContext = diff.trim()
+              ? `## Git Diff\n\n\`\`\`diff\n${diff.trim()}\n\`\`\``
+              : 'No diff available - file may be newly created or unchanged. Review the full file content below.';
+          } catch {
+            diffContext = 'Git diff unavailable. Review the full file content below.';
+          }
+        }
+
+        // Try to get existing LUNA summary for context
+        let summaryContext = '';
+        try {
+          const existingSummary = await summaryManager.getSummary(workspace_path, file_path) as any;
+          if (existingSummary) {
+            summaryContext = `\n## Existing LUNA Summary\nPurpose: ${existingSummary.summary?.purpose || 'Unknown'}\nComplexity: ${existingSummary.summary?.fileLevelMetadata?.complexity || 'Unknown'}\nKey Components: ${(existingSummary.summary?.keyComponents || []).map((c: any) => c.name).join(', ')}\nDependencies: ${(existingSummary.summary?.dependencies?.internal || []).map((d: any) => d.path).join(', ')}`;
+          }
+        } catch {
+          // No summary available, that's fine
+        }
+
+        const focusLabel = review_focus || 'all';
+        const focusInstructions: Record<string, string> = {
+          all: 'Perform a comprehensive review covering bugs, performance, security, style, and side effects.',
+          bugs: 'Focus specifically on logic errors, potential runtime errors, incorrect implementations, null/undefined handling, and off-by-one errors.',
+          performance: 'Focus specifically on inefficient algorithms, memory leaks, unnecessary allocations, missing caching opportunities, and O(n^2)+ operations.',
+          security: 'Focus specifically on input validation, injection vulnerabilities, authentication/authorization gaps, data exposure, and unsafe deserialization.',
+          style: 'Focus specifically on code readability, naming conventions, function length, DRY violations, and maintainability concerns.'
+        };
+
+        const reviewPrompt = `You are a senior code reviewer performing a detailed review of changes to "${file_path}".
+
+REVIEW FOCUS: ${focusLabel.toUpperCase()}
+${focusInstructions[focusLabel] || focusInstructions.all}
+
+${diffContext}
+
+## Current File Content
+\`\`\`\n${currentContent}\n\`\`\`
+${summaryContext}
+
+## Instructions
+
+Analyze the diff carefully. For each issue found, categorize it:
+
+**Severity Levels:**
+- CRITICAL: Will cause crashes, data loss, or security breaches
+- HIGH: Significant bugs or performance problems
+- MEDIUM: Code quality issues that should be addressed
+- LOW: Style or minor improvements
+
+**Categories:** BUG, PERFORMANCE, SECURITY, STYLE, SIDE_EFFECT
+
+Return your complete review as a JSON code block:
+
+\`\`\`json
+{
+  "file": "${file_path}",
+  "reviewedAt": "${new Date().toISOString()}",
+  "reviewFocus": "${focusLabel}",
+  "summary": {
+    "totalIssues": 0,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0
+  },
+  "issues": [
+    {
+      "severity": "HIGH",
+      "category": "BUG",
+      "lineRange": "45-47",
+      "description": "Clear description of the problem",
+      "recommendation": "Specific fix recommendation",
+      "codeSnippet": "the problematic code"
+    }
+  ],
+  "verdict": "APPROVED or NEEDS_CHANGES or BLOCKED",
+  "overallAssessment": "2-3 sentence summary of review findings"
+}
+\`\`\`
+
+Be thorough but fair. Only flag real issues, not stylistic preferences. If the code looks good, say so with verdict APPROVED.`;
+
+        // Spawn the review worker
+        const result = await callExtensionBridge('/api/spawn-worker', 'POST', {
+          taskType: 'analysis',
+          prompt: reviewPrompt,
+          contextFiles: [file_path],
+          model: model || 'gpt-4o',
+          autoExecute: false,
+          metadata: {
+            reviewType: 'file_changes',
+            reviewFocus: focusLabel
+          }
+        });
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                message: 'Code review agent spawned',
+                taskId: result.taskId,
+                file: file_path,
+                reviewFocus: focusLabel,
+                diffAvailable: diffContext.length > 100,
+                summaryAvailable: summaryContext.length > 0,
+                instructions: `Review is running. Use #check_worker_status with task_id="${result.taskId}" to check progress, or #wait_for_workers with task_ids=["${result.taskId}"] to block until complete.`
+              }, null, 2),
             },
           ],
         };

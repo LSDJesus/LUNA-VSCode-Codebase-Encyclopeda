@@ -101,13 +101,14 @@ export class ExtensionBridge {
 
     private async handleSpawnWorker(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
         const body = await this.readBody(req);
-        const { taskType, prompt, contextFiles, model, outputFile, autoExecute } = JSON.parse(body);
+        const { taskType, prompt, contextFiles, model, outputFile, autoExecute, metadata } = JSON.parse(body);
 
         const taskId = await this.taskManager.submitTask(taskType, prompt, {
             contextFiles,
             model,
             outputFile,
-            autoExecute
+            autoExecute,
+            metadata
         });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });

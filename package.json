@@ -2,7 +2,7 @@
   "name": "luna-codebase-encyclopedia",
   "displayName": "LUNA Codebase Encyclopedia",
   "description": "Agent-First Context API: Generate structured summaries for instant Copilot queries + Educational code breakdowns for learning",
-  "version": "1.1.23-dev3",
+  "version": "1.1.25",
   "publisher": "ai-evolution",
   "icon": "resources/icon.png",
   "repository": {
@@ -84,6 +84,21 @@
         "command": "luna-encyclopedia.regenerateMeta",
         "title": "LUNA: Regenerate Meta-Summaries",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "luna-encyclopedia.reviewFileChanges",
+        "title": "LUNA: Review Changes in This File",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "luna-encyclopedia.projectHealthReport",
+        "title": "LUNA: Project Health Report",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "luna-encyclopedia.suggestRefactorings",
+        "title": "LUNA: Suggest Refactorings",
+        "icon": "$(lightbulb)"
       }
     ],
     "menus": {
@@ -99,6 +114,32 @@
           "group": "1_modification",
           "when": "resourceExtname =~ /^\\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|h)$/",
           "title": "LUNA: Explain This Code"
+        },
+        {
+          "command": "luna-encyclopedia.reviewFileChanges",
+          "group": "1_modification",
+          "when": "resourceExtname =~ /^\\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|h|cs|rb|php|swift|kt)$/",
+          "title": "LUNA: Review Changes in This File"
+        },
+        {
+          "command": "luna-encyclopedia.suggestRefactorings",
+          "group": "1_modification",
+          "when": "resourceExtname =~ /^\\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|h|cs|rb|php|swift|kt)$/",
+          "title": "LUNA: Suggest Refactorings"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "luna-encyclopedia.reviewFileChanges",
+          "group": "1_modification",
+          "when": "resourceExtname =~ /^\\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|h|cs|rb|php|swift|kt)$/",
+          "title": "LUNA: Review Changes in This File"
+        },
+        {
+          "command": "luna-encyclopedia.suggestRefactorings",
+          "group": "1_modification",
+          "when": "resourceExtname =~ /^\\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|h|cs|rb|php|swift|kt)$/",
+          "title": "LUNA: Suggest Refactorings"
         }
       ]
     },
