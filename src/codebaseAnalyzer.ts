@@ -109,7 +109,11 @@ export class CodebaseAnalyzer {
         const report = StalenessDetector.getStalenessReport(workspaceFolder.uri.fsPath, files, branchAware);
 
         if (report.staleFiles.length === 0) {
-            vscode.window.showInformationMessage(`All ${report.total} summaries are up-to-date! ✅`);
+            // No stale file summaries, but still regenerate meta-summaries
+            // (code may have changed in ways that affect complexity, dead code, dependencies, etc.)
+            progress.report({ message: 'File summaries up-to-date. Regenerating meta-analysis...' });
+            await this.regenerateMetaSummaries(progress, token);
+            vscode.window.showInformationMessage(`All ${report.total} summaries up-to-date. Meta-analysis regenerated! ✅`);
             return;
         }
 
@@ -154,6 +158,10 @@ export class CodebaseAnalyzer {
 
         // Wait for all updates to complete
         await Promise.all(updatePromises);
+
+        // Regenerate meta-summaries since file summaries changed
+        progress.report({ message: 'Regenerating meta-analysis...' });
+        await this.regenerateMetaSummaries(progress, token);
     }
 
     async initializeWorkspace(
