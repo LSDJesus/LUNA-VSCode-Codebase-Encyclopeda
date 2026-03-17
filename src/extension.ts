@@ -12,9 +12,11 @@ import { GitCommitWatcher } from './gitCommitWatcher';
 import { PromptManager } from './promptManager';
 import { BackgroundTaskManager } from './backgroundTaskManager';
 import { ExtensionBridge } from './extensionBridge';
+import { ChatSessionMonitor } from './chatSessionMonitor';
 
 let summaryTreeProvider: SummaryTreeProvider;
 let gitCommitWatcher: GitCommitWatcher | null = null;
+let chatSessionMonitor: ChatSessionMonitor | null = null;
 let lunaOutputChannel: vscode.OutputChannel;
 let taskManager: BackgroundTaskManager;
 let extensionBridge: ExtensionBridge;
@@ -69,6 +71,12 @@ export async function activate(context: vscode.ExtensionContext) {
         gitCommitWatcher = new GitCommitWatcher(workspaceFolder.uri.fsPath);
         gitCommitWatcher.start();
     }
+
+    // Start chat session monitor (backs up Copilot conversations)
+    chatSessionMonitor = new ChatSessionMonitor(context, lunaOutputChannel);
+    chatSessionMonitor.start().catch(err => {
+        lunaOutputChannel.appendLine(`⚠️ Chat monitor failed to start: ${err}`);
+    });
 
     // Register tree view
     const treeView = vscode.window.registerTreeDataProvider('luna-encyclopedia.summaryTree', summaryTreeProvider);
@@ -988,6 +996,60 @@ Be specific with function names and line references. Don't suggest renaming vari
         });
     });
 
+    // Backup All Chat Sessions command
+    const backupChatsCommand = vscode.commands.registerCommand('luna-encyclopedia.backupChatSessions', async () => {
+        if (!chatSessionMonitor) {
+            vscode.window.showErrorMessage('Chat session monitor not initialized.');
+            return;
+        }
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'LUNA: Backing up chat sessions...',
+            cancellable: false
+        }, async (progress) => {
+            const result = await chatSessionMonitor!.backupAllSessions();
+            vscode.window.showInformationMessage(
+                `Backed up ${result.sessions} session(s) with ${result.turns} total turn(s) to .codebase/chat-history/`
+            );
+        });
+    });
+
+    // View Chat Activity Digest command
+    const chatDigestCommand = vscode.commands.registerCommand('luna-encyclopedia.chatActivityDigest', async () => {
+        if (!chatSessionMonitor) {
+            vscode.window.showErrorMessage('Chat session monitor not initialized.');
+            return;
+        }
+
+        const daysOptions = [
+            { label: 'Last 24 hours', value: 1 },
+            { label: 'Last 7 days', value: 7 },
+            { label: 'Last 30 days', value: 30 },
+            { label: 'All time', value: 3650 }
+        ];
+
+        const selected = await vscode.window.showQuickPick(daysOptions, {
+            placeHolder: 'Select time range for activity digest',
+            title: 'LUNA: Chat Activity Digest'
+        });
+
+        if (!selected) { return; }
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'LUNA: Generating activity digest...',
+            cancellable: false
+        }, async () => {
+            const digest = await chatSessionMonitor!.generateSessionDigest(selected.value);
+            const doc = await vscode.workspace.openTextDocument({
+                content: digest,
+                language: 'markdown'
+            });
+            await vscode.window.showTextDocument(doc, { preview: false });
+        });
+    });
+
     context.subscriptions.push(
         initCommand,
         generateCommand, 
@@ -1001,6 +1063,8 @@ Be specific with function names and line references. Don't suggest renaming vari
         reviewFileChangesCommand,
         projectHealthReportCommand,
         suggestRefactoringsCommand,
+        backupChatsCommand,
+        chatDigestCommand,
         resetCommand,
         reregisterMCPCommand,
         treeView,
@@ -1146,6 +1210,11 @@ export function deactivate() {
     // Stop git commit watcher on deactivation
     if (gitCommitWatcher) {
         gitCommitWatcher.stop();
+    }
+
+    // Stop chat session monitor
+    if (chatSessionMonitor) {
+        chatSessionMonitor.stop();
     }
     
     // Stop extension bridge server

@@ -2,7 +2,7 @@
   "name": "luna-codebase-encyclopedia",
   "displayName": "LUNA Codebase Encyclopedia",
   "description": "Agent-First Context API: Generate structured summaries for instant Copilot queries + Educational code breakdowns for learning",
-  "version": "1.1.27",
+  "version": "1.2.0",
   "publisher": "ai-evolution",
   "icon": "resources/icon.png",
   "repository": {
@@ -99,6 +99,16 @@
         "command": "luna-encyclopedia.suggestRefactorings",
         "title": "LUNA: Suggest Refactorings",
         "icon": "$(lightbulb)"
+      },
+      {
+        "command": "luna-encyclopedia.backupChatSessions",
+        "title": "LUNA: Backup All Chat Sessions",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "luna-encyclopedia.chatActivityDigest",
+        "title": "LUNA: Chat Activity Digest",
+        "icon": "$(notebook)"
       }
     ],
     "menus": {
@@ -370,6 +380,11 @@
           "minimum": 1,
           "maximum": 168,
           "markdownDescription": "Automatically delete completed worker task results after this many hours.\n\n**Default: 24 hours**"
+        },
+        "luna-encyclopedia.chatBackup.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**Chat Session Monitor**\n\nAutomatically watches for new Copilot Chat conversations and backs them up to `.codebase/chat-history/`.\n\n- Session markdown backups in `chat-history/sessions/`\n- Structured activity log in `chat-history/activity-log.jsonl`\n- Incremental — only processes new turns\n\n**Default: Enabled**"
         }
       }
     }

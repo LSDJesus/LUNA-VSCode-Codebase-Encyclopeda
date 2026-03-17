@@ -475,6 +475,57 @@ const tools: Tool[] = [
       required: ['workspace_path', 'file_path'],
     },
   },
+  {
+    name: 'query_chat_history',
+    description: 'Search through backed-up Copilot Chat conversations for this workspace. Find past decisions, discussions, and context by keyword, file pattern, or time range. Returns matching chat turns from the activity log.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+        search_text: {
+          type: 'string',
+          description: 'Keywords to search for in user messages and AI responses (e.g., "authentication", "refactor", "database migration")',
+        },
+        file_pattern: {
+          type: 'string',
+          description: 'Filter to turns that referenced files matching this pattern (e.g., "auth", "extension.ts")',
+        },
+        days_back: {
+          type: 'number',
+          description: 'Only return results from the last N days. Default: 30',
+          default: 30,
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return. Default: 20',
+          default: 20,
+        },
+      },
+      required: ['workspace_path'],
+    },
+  },
+  {
+    name: 'get_chat_activity_digest',
+    description: 'Get a summary digest of all Copilot Chat activity for this workspace over a time period. Shows sessions, topics discussed, files touched, models used, and key decisions. Perfect for understanding project history.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_path: {
+          type: 'string',
+          description: 'Absolute path to workspace root',
+        },
+        days_back: {
+          type: 'number',
+          description: 'Number of days to look back. Default: 7',
+          default: 7,
+        },
+      },
+      required: ['workspace_path'],
+    },
+  },
 ];
 
 // Handle tool listing
@@ -1155,6 +1206,164 @@ Be thorough but fair. Only flag real issues, not stylistic preferences. If the c
               }, null, 2),
             },
           ],
+        };
+      }
+
+      case 'query_chat_history': {
+        const { workspace_path, search_text, file_pattern, days_back, limit } = args as {
+          workspace_path: string;
+          search_text?: string;
+          file_pattern?: string;
+          days_back?: number;
+          limit?: number;
+        };
+
+        const fs = await import('fs');
+        const path = await import('path');
+        const logPath = path.join(workspace_path, '.codebase', 'chat-history', 'activity-log.jsonl');
+
+        if (!fs.existsSync(logPath)) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'No chat history found. The Chat Session Monitor backs up conversations automatically when enabled in LUNA settings. Make sure "Chat Backup Enabled" is turned on.',
+            }],
+          };
+        }
+
+        const cutoff = Date.now() - ((days_back || 30) * 24 * 60 * 60 * 1000);
+        const maxResults = limit || 20;
+        const lines = fs.readFileSync(logPath, 'utf8').split('\n').filter((l: string) => l.trim());
+        const results: any[] = [];
+
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line);
+            if (entry.timestamp < cutoff) { continue; }
+            if (search_text) {
+              const text = search_text.toLowerCase();
+              const inUser = entry.userMessage?.toLowerCase().includes(text);
+              const inAi = entry.aiResponsePreview?.toLowerCase().includes(text);
+              if (!inUser && !inAi) { continue; }
+            }
+            if (file_pattern) {
+              const pattern = file_pattern.toLowerCase();
+              const hasMatch = (entry.fileReferences || []).some(
+                (f: string) => f.toLowerCase().includes(pattern)
+              );
+              if (!hasMatch) { continue; }
+            }
+            results.push({
+              timestamp: new Date(entry.timestamp).toISOString(),
+              sessionTitle: entry.sessionTitle,
+              model: entry.model,
+              userMessage: entry.userMessage,
+              aiResponsePreview: entry.aiResponsePreview,
+              fileReferences: entry.fileReferences,
+              hadToolCalls: entry.hadToolCalls,
+            });
+            if (results.length >= maxResults) { break; }
+          } catch { /* skip malformed */ }
+        }
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              query: { search_text, file_pattern, days_back: days_back || 30 },
+              totalResults: results.length,
+              results,
+            }, null, 2),
+          }],
+        };
+      }
+
+      case 'get_chat_activity_digest': {
+        const { workspace_path, days_back } = args as {
+          workspace_path: string;
+          days_back?: number;
+        };
+
+        const fs = await import('fs');
+        const path = await import('path');
+        const logPath = path.join(workspace_path, '.codebase', 'chat-history', 'activity-log.jsonl');
+
+        if (!fs.existsSync(logPath)) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'No chat history found. Enable Chat Backup in LUNA settings to start recording conversations.',
+            }],
+          };
+        }
+
+        const daysBack = days_back || 7;
+        const cutoff = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
+        const lines = fs.readFileSync(logPath, 'utf8').split('\n').filter((l: string) => l.trim());
+        const recentEntries: any[] = [];
+
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line);
+            if (entry.timestamp >= cutoff) {
+              recentEntries.push(entry);
+            }
+          } catch { /* skip */ }
+        }
+
+        if (recentEntries.length === 0) {
+          return {
+            content: [{
+              type: 'text',
+              text: `No chat activity in the last ${daysBack} day(s).`,
+            }],
+          };
+        }
+
+        // Group by session
+        const bySession = new Map<string, any[]>();
+        for (const entry of recentEntries) {
+          const key = entry.sessionId || 'unknown';
+          if (!bySession.has(key)) { bySession.set(key, []); }
+          bySession.get(key)!.push(entry);
+        }
+
+        let digest = `# Chat Activity Digest (Last ${daysBack} Days)\n\n`;
+        digest += `**Period:** ${new Date(cutoff).toLocaleDateString()} — ${new Date().toLocaleDateString()}\n`;
+        digest += `**Total Turns:** ${recentEntries.length} across ${bySession.size} session(s)\n\n`;
+
+        for (const [sessionId, entries] of bySession) {
+          const title = entries[0]?.sessionTitle || 'Untitled';
+          const models = [...new Set(entries.map((e: any) => e.model).filter(Boolean))];
+          const files = [...new Set(entries.flatMap((e: any) => e.fileReferences || []))];
+          const toolTurns = entries.filter((e: any) => e.hadToolCalls).length;
+
+          digest += `## ${title}\n`;
+          digest += `- **${entries.length} turns** | Models: ${models.join(', ') || 'unknown'}\n`;
+          if (toolTurns > 0) { digest += `- **${toolTurns} agent turns** (tool calls)\n`; }
+          if (files.length > 0) {
+            digest += `- **Files touched:** ${files.slice(0, 10).map((f: string) => `\`${path.basename(f)}\``).join(', ')}`;
+            if (files.length > 10) { digest += ` +${files.length - 10} more`; }
+            digest += '\n';
+          }
+          digest += `- **Topics:**\n`;
+          for (const entry of entries.slice(0, 10)) {
+            const preview = entry.userMessage?.substring(0, 120)?.replace(/\n/g, ' ') || '';
+            if (preview) {
+              digest += `  - ${preview}${entry.userMessage?.length > 120 ? '...' : ''}\n`;
+            }
+          }
+          if (entries.length > 10) {
+            digest += `  - ... and ${entries.length - 10} more turns\n`;
+          }
+          digest += '\n';
+        }
+
+        return {
+          content: [{
+            type: 'text',
+            text: digest,
+          }],
         };
       }
 
