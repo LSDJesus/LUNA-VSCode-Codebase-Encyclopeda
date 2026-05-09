@@ -104,6 +104,13 @@ export class CodebaseAnalyzer {
             throw new Error('No source files found');
         }
 
+        // Remove summaries for files that no longer exist
+        progress.report({ message: 'Checking for orphaned summaries...' });
+        const removed = this.removeOrphanedSummaries(workspaceFolder.uri.fsPath, files);
+        if (removed > 0) {
+            this.log(`Removed ${removed} orphaned summary file(s)`);
+        }
+
         // Check staleness
         progress.report({ message: 'Checking for stale summaries...' });
         const report = StalenessDetector.getStalenessReport(workspaceFolder.uri.fsPath, files, branchAware);
@@ -162,6 +169,108 @@ export class CodebaseAnalyzer {
         // Regenerate meta-summaries since file summaries changed
         progress.report({ message: 'Regenerating meta-analysis...' });
         await this.regenerateMetaSummaries(progress, token);
+    }
+
+    /**
+     * Walk .codebase/ and delete .md/.json summary pairs whose source file no longer exists.
+     * Skips meta-analysis files (complexity-heatmap.json, etc.) and index files.
+     * Returns the number of source summaries removed.
+     */
+    private removeOrphanedSummaries(workspacePath: string, currentFiles: string[]): number {
+        const codebasePath = path.join(workspacePath, '.codebase');
+        if (!fs.existsSync(codebasePath)) { return 0; }
+
+        // Build a set of known source paths for O(1) lookup
+        const knownSources = new Set(currentFiles.map(f => path.resolve(f)));
+
+        // Meta-analysis filenames that live directly in .codebase/ — never orphans
+        const metaFiles = new Set([
+            'complexity-heatmap.json',
+            'component-map.json',
+            'dependency-graph.json',
+            'dead-code-analysis.json',
+            'QA_REPORT.json',
+            'SUMMARY_REPORT.md',
+            'api-reference.json',
+            '.lunasummarize',
+            '.luna-template.json',
+            '.luna-template.json.example',
+            '.tracking-state.json',
+        ]);
+
+        let removed = 0;
+
+        const walkAndClean = (dir: string) => {
+            let entries: fs.Dirent[];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+            catch { return; }
+
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+
+                if (entry.isDirectory()) {
+                    // Recurse — but skip chat-history and mcp-server subdirs
+                    if (entry.name === 'chat-history' || entry.name === 'mcp-server') { continue; }
+                    walkAndClean(fullPath);
+                    // Remove now-empty directories (best-effort)
+                    try {
+                        if (fs.readdirSync(fullPath).length === 0) {
+                            fs.rmdirSync(fullPath);
+                        }
+                    } catch { /* ignore */ }
+                    continue;
+                }
+
+                if (!entry.isFile()) { continue; }
+
+                // Skip meta-analysis files at root of .codebase/
+                if (dir === codebasePath && metaFiles.has(entry.name)) { continue; }
+
+                // Only process .json file summaries (each one represents a source file)
+                if (!entry.name.endsWith('.json')) { continue; }
+
+                // Skip index files (e.g. src.index.json, foldername.index.json)
+                if (entry.name.includes('.index.')) { continue; }
+
+                // Read sourceFile from the JSON metadata
+                let sourceRelPath: string | undefined;
+                try {
+                    const data = JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
+                    sourceRelPath = data.sourceFile;
+                } catch { continue; } // Malformed JSON — leave it alone
+
+                if (!sourceRelPath) { continue; } // Not a file summary
+
+                const absoluteSourcePath = path.resolve(workspacePath, sourceRelPath);
+
+                if (!knownSources.has(absoluteSourcePath)) {
+                    // Source file is gone — remove both .json and .md
+                    const basePath = fullPath.replace(/(\.\w+)?\.json$/, '');
+                    for (const ext of ['.json', '.md']) {
+                        const target = basePath + ext;
+                        if (fs.existsSync(target)) {
+                            try { fs.unlinkSync(target); } catch { /* ignore */ }
+                        }
+                    }
+                    // Also handle branch-suffixed variants (e.g. foo.main.json)
+                    const dir2 = path.dirname(fullPath);
+                    const base = path.basename(fullPath, '.json').replace(/\.[^.]+$/, ''); // strip branch suffix too
+                    try {
+                        const siblings = fs.readdirSync(dir2);
+                        for (const sibling of siblings) {
+                            if (sibling.startsWith(base + '.') && (sibling.endsWith('.json') || sibling.endsWith('.md'))) {
+                                try { fs.unlinkSync(path.join(dir2, sibling)); } catch { /* ignore */ }
+                            }
+                        }
+                    } catch { /* ignore */ }
+                    removed++;
+                    this.log(`Removed orphaned summary: ${sourceRelPath}`);
+                }
+            }
+        };
+
+        walkAndClean(codebasePath);
+        return removed;
     }
 
     async initializeWorkspace(

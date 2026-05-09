@@ -4,19 +4,13 @@
 
 ## Project Stats
 
-**Repository Activity:**
-- **Total Commits:** 35
-- **Total Lines Added:** 22,783
-- **Total Lines Deleted:** 4,349
-- **Net Change:** +18,434 lines
-
 **Current Codebase:**
-- **Total Files:** 93 (TypeScript, JSON, Markdown)
-- **Total Lines of Code:** 13,596 lines
-- **Version:** 1.1.23-dev3
+- **Version:** 1.2.0
 - **Architecture:** 
-  - **VS Code Extension** (31 TypeScript files)
+  - **VS Code Extension** (32 TypeScript files)
   - **MCP Server** (5 TypeScript files)
+  - **18 MCP Tools** for Copilot Agent Mode
+  - **15 User Commands** via Command Palette
   - **Documentation** (24 Markdown files)
   - **Configuration** (29 JSON files + prompts)
 
@@ -63,9 +57,9 @@ Right-click any file → "LUNA: Explain This Code"
 - Dead code detection with AST-based analysis
 - Smart architecture component mapping
 - Quality assurance reviews
-- **Multi-language support (Python, TypeScript, Java, C#, Go, JavaScript)** (NEW!)
-- **Reset command** to start fresh (NEW!)
-- **Async worker agents for parallel task delegation** (NEW in v1.1.15!)
+- **Multi-language support (Python, TypeScript, Java, C#, Go, JavaScript)**
+- **Chat session backup & activity logging** (NEW in v1.2.0!)
+- **Async worker agents for parallel task delegation**
 
 ## Quick Start
 
@@ -191,7 +185,7 @@ const task = await spawn_worker_agent({
 
 ## MCP Tools for AI Agents
 
-LUNA provides **16 tools** for Copilot Agent Mode (auto-registered on activation):
+LUNA provides **18 tools** for Copilot Agent Mode (auto-registered on activation):
 
 **File & Code Tools:**
 - `#get_file_summary` - Get cached summary for a specific file (MD + JSON)
@@ -212,6 +206,10 @@ LUNA provides **16 tools** for Copilot Agent Mode (auto-registered on activation
 
 **Code Review Tools:**
 - `#review_file_changes` - Spawn an AI agent to review file changes (git diff) for bugs, logic errors, performance issues, security vulnerabilities, and unintended side effects
+
+**Chat History Tools:**
+- `#query_chat_history` - Search past Copilot conversations by keyword, file pattern, or time range
+- `#get_chat_activity_digest` - Get a summary digest of all recent chat activity across sessions
 
 **Maintenance Tools:**
 - `#list_stale_summaries` - Check which files need re-summarization based on git history
@@ -246,6 +244,12 @@ LUNA provides **16 tools** for Copilot Agent Mode (auto-registered on activation
 
 "Check this file for security issues"
 → #review_file_changes file_path="src/auth.ts" review_focus="security"
+
+"What did we discuss about the auth refactor?"
+→ #query_chat_history search_text="auth refactor" days_back=30
+
+"Show me a summary of this week's conversations"
+→ #get_chat_activity_digest days_back=7
 ```
 
 ## Agent Instructions (Recommended)
@@ -261,8 +265,9 @@ When answering questions about code:
    - Use #search_summaries to find relevant files
    - Use #get_file_summary for detailed analysis
    - Use #get_dependency_graph for relationships
-   - **Use #get_api_reference for API questions** ← NEW!
-   - **Use #search_endpoints to find specific endpoints** ← NEW!
+   - Use #get_api_reference for API questions
+   - Use #search_endpoints to find specific endpoints
+   - **Use #query_chat_history to recall past decisions and discussions** ← NEW!
 
 2. **Only read source code** for:
    - Critical security/business logic verification
@@ -278,7 +283,8 @@ When answering questions about code:
    - Zero token waste (no re-reading files)
    - Focus on higher-level architecture
    - Always up-to-date (summaries track git history)
-   - **Complete API documentation at your fingertips** (NEW!)
+   - Complete API documentation at your fingertips
+   - **Full conversation history searchable by AI agents** (NEW!)
 
 This protocol maximizes efficiency and accuracy.
 ```
@@ -407,6 +413,49 @@ Right-click any file → "LUNA: Suggest Refactorings"
 - Focuses on structural improvements, not superficial stuff like variable naming
 - Results open in an untitled tab -- close when done
 
+### Chat Session Monitor (NEW - v1.2.0)
+Automatically backs up all your Copilot Chat conversations and maintains a searchable activity log. Never lose a conversation again.
+
+**How it works:**
+- On extension activation, LUNA finds your workspace's chat session storage automatically (zero config)
+- Watches for new messages with a debounced file system watcher
+- Incrementally processes only new turns (won't re-process old messages on restart)
+- Cross-platform: Windows, macOS, Linux
+
+**What it produces:**
+- `.codebase/chat-history/sessions/` — Full markdown backups of every session
+  - Human-readable with metadata, timestamps, model info, file references
+  - Tool call indicators (🔧) on agent turns
+- `.codebase/chat-history/activity-log.jsonl` — Structured log of every turn
+  - Queryable by keyword, file pattern, or time range
+  - Includes user messages, AI response previews, file references
+
+**Commands:**
+```
+Command Palette → "LUNA: Backup All Chat Sessions"
+→ Forces full backup of all sessions immediately
+
+Command Palette → "LUNA: Chat Activity Digest"
+→ Choose time range (24h / 7d / 30d / all time)
+→ Opens readable summary of all chat activity
+```
+
+**MCP Tools (for AI agent access):**
+```
+"What did we discuss about authentication last week?"
+→ #query_chat_history search_text="authentication" days_back=7
+
+"Show me a summary of all recent conversations"
+→ #get_chat_activity_digest days_back=7
+```
+
+**Key details:**
+- Enabled by default (toggle in Settings > LUNA > Chat Backup Enabled)
+- Per-workspace isolation — each workspace has its own chat history
+- No named workspace file needed — just opening a folder is enough
+- Tracking state persisted to disk — survives VS Code restarts
+- Works with every Copilot model and chat mode (agent, edit, chat)
+
 ### Quality Assurance Reviews
 After fast deterministic analysis, Copilot validates the results:
 
@@ -466,6 +515,7 @@ Configure LUNA in VS Code Settings → Extensions → LUNA Encyclopedia:
 - **Concurrent Workers**: Parallel analysis (1-20, default: 5)
 - **Max File Size**: Skip files larger than this (default: 500KB)
 - **Enable Copilot QA**: AI reviews deterministic analysis (default: ON)
+- **Chat Backup Enabled**: Auto-backup Copilot Chat sessions (default: ON)
 
 **Breakdown Settings:**
 - **Breakdown Verbosity**: How detailed code explanations should be
@@ -515,6 +565,11 @@ LUNA generates **structured summaries AND meta-analysis files** in the `.codebas
 - **`QA_REPORT.json`** - Quality assurance validation results
 - **`SUMMARY_REPORT.md`** - Human-readable overview of issues
 
+### Chat History Files
+- **`chat-history/sessions/*.md`** - Full markdown backup of each Copilot Chat session
+- **`chat-history/activity-log.jsonl`** - Structured log of all chat turns (queryable via MCP)
+- **`chat-history/.tracking-state.json`** - Internal state for incremental processing
+
 ## Detailed Docs
 
 - **[How to Use LUNA](docs/HOW_TO_ACTUALLY_USE_LUNA.md)** - Practical guide with real examples
@@ -529,17 +584,17 @@ LUNA generates **structured summaries AND meta-analysis files** in the `.codebas
 LUNA is built with a **dual-component architecture**:
 
 ### VS Code Extension (Core)
-**Location:** `src/` (23 TypeScript files)
+**Location:** `src/` (32 TypeScript files)
 - **Analyzers**: Codebase analyzer, dependency analyzer, static import analyzer, dead code detector
 - **Generators**: API reference generator, bootstrap guide generator, code breakdown generator
 - **UI Components**: Summary panel, summary tree provider, summary preview generator
 - **Utilities**: Concurrency limiter, staleness detector, git branch detector, ignore pattern matcher
-- **Integration**: Extension bridge, git commit watcher, code navigation handler
+- **Integration**: Extension bridge, git commit watcher, chat session monitor, code navigation handler
 - **Entry Point**: [extension.ts](src/extension.ts) - Orchestrates all components
 
 ### MCP Server (API Layer)
 **Location:** `mcp-server/src/` (5 TypeScript files)
-- **Server**: [index.ts](mcp-server/src/index.ts) - MCP server entry point with 12 registered tools
+- **Server**: [index.ts](mcp-server/src/index.ts) - MCP server entry point with 18 registered tools
 - **Manager**: [summaryManager.ts](mcp-server/src/summaryManager.ts) - Summary CRUD operations
 - **Analyzer**: [copilotAnalyzer.ts](mcp-server/src/copilotAnalyzer.ts) - AI-powered file analysis
 - **Cache**: [lruCache.ts](mcp-server/src/lruCache.ts) - LRU cache for performance
@@ -554,7 +609,7 @@ Based on LUNA's own analysis:
 
 ## Project Status
 
-LUNA is **production-ready** (v1.1.23-dev3) with all major features implemented and tested:
+LUNA is **production-ready** (v1.2.0) with all major features implemented and tested:
 
 **Core Features:**
 - File summarization with precise line numbers and git branch awareness
@@ -585,20 +640,32 @@ LUNA is **production-ready** (v1.1.23-dev3) with all major features implemented 
 - FREE model support (gpt-4o, gpt-4.1, raptor-mini, gpt-5-mini)
 - Production-tested with complex documentation tasks
 
+**Chat Session Monitor (v1.2.0):**
+- Automatic backup of all Copilot Chat conversations per workspace
+- Incremental processing — only new turns get captured
+- Structured activity log (JSONL) queryable via MCP tools
+- Full markdown session backups with metadata, timestamps, and file references
+- Cross-platform workspace storage detection (Windows, macOS, Linux)
+- Tracking state persisted across restarts
+
 **MCP Server Integration:**
 - MCP server auto-registers on first activation (stdio transport)
-- 15 analysis tools exposed as MCP tools
+- 18 analysis tools exposed as MCP tools
 - Full Copilot Agent Mode integration
 - LRU caching for instant queries (zero token cost)
 - Extension HTTP bridge for tool access
 
-## Recent Updates (v1.1.25)
+## Recent Updates (v1.2.0)
 
-**Project Health Report** - New `LUNA: Project Health Report` command generates a comprehensive project assessment. Reads all existing analysis data (complexity, dead code, dependencies, components) and produces an AI-generated health score, critical issues, technical debt summary, architecture assessment, and prioritized recommendations. Uses FREE model.  
-**Suggest Refactorings** - New `LUNA: Suggest Refactorings` command (command palette + right-click). Auto-selects highest-complexity files or analyzes a specific file. Provides concrete refactoring plans with specific functions to change, quick wins vs structural changes, and estimated complexity reduction. Uses FREE model.  
-**AI Code Review** - `LUNA: Review Changes in This File` command + `#review_file_changes` MCP tool. Reviews git diffs for bugs, performance issues, security vulnerabilities, and style issues. Uses the configured LUNA model (FREE) via the Language Model API -- zero premium requests.  
-**Smart Diff Detection** - Automatically uses git diff (unstaged/staged/HEAD~1), or accepts explicit before/after content for comparison  
-**All analysis commands use FREE models** - Configured in Settings > LUNA > Copilot Model (default: gpt-4o)  
+**Chat Session Monitor** - Automatically backs up all Copilot Chat conversations to `.codebase/chat-history/`. Full markdown session backups + structured JSONL activity log. Incremental processing (only new turns), cross-platform, per-workspace isolation. Never lose a conversation again.  
+**Chat History MCP Tools** - Two new tools: `#query_chat_history` (search past conversations by keyword, file, or time) and `#get_chat_activity_digest` (summary of all recent activity). AI agents can now recall past decisions and context.  
+**Backup & Digest Commands** - `LUNA: Backup All Chat Sessions` (force full backup) and `LUNA: Chat Activity Digest` (view activity summary for last 24h/7d/30d/all time).  
+
+**Previously in v1.1.25:**  
+**Project Health Report** - `LUNA: Project Health Report` generates a comprehensive project assessment with health score (1-10), critical issues, technical debt, and prioritized recommendations. Uses FREE model.  
+**Suggest Refactorings** - `LUNA: Suggest Refactorings` (command palette + right-click). Auto-selects highest-complexity files. Concrete refactoring plans with specific functions, quick wins vs structural changes.  
+**AI Code Review** - `LUNA: Review Changes in This File` + `#review_file_changes` MCP tool. Reviews git diffs for bugs, performance, security, and style. Zero premium requests.  
+**Update Stale now regenerates meta** - Running "Update Stale Summaries" always regenerates meta-analysis (complexity, dead code, dependencies, components) even when no file summaries are stale.  
 
 **Previously in v1.1.23:**
 - **Include/Exclude Pattern Fixes** - Fixed critical bugs where `.lunasummarize` exclude patterns were ignored
