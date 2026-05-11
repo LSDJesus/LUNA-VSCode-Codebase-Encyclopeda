@@ -166,6 +166,17 @@ export class CodebaseAnalyzer {
         // Wait for all updates to complete
         await Promise.all(updatePromises);
 
+        // Rebuild directory index files so *.index.md / *.index.json reflect current state
+        progress.report({ message: 'Regenerating directory indices...' });
+        const includeMatcher = new SummaryIncludeMatcher(workspaceFolder.uri.fsPath);
+        const tree = DirectoryTreeBuilder.buildTree(workspaceFolder.uri.fsPath, files, []);
+        const directories = DirectoryTreeBuilder.getDirectoriesBottomUp(tree);
+        for (const dir of directories) {
+            if (token.isCancellationRequested) { break; }
+            await this.generateDirectoryIndex(dir, workspaceFolder.uri.fsPath, tree);
+        }
+        await this.generateRootIndex(tree, workspaceFolder.uri.fsPath);
+
         // Regenerate meta-summaries since file summaries changed
         progress.report({ message: 'Regenerating meta-analysis...' });
         await this.regenerateMetaSummaries(progress, token);
@@ -584,6 +595,15 @@ export class CodebaseAnalyzer {
         // Discover files for API reference generation
         const files = await this.discoverFiles(workspaceFolder.uri.fsPath);
 
+        // Rebuild directory index files so *.index.md / *.index.json are current
+        progress.report({ message: 'Regenerating directory indices...' });
+        const tree = DirectoryTreeBuilder.buildTree(workspaceFolder.uri.fsPath, files, []);
+        const directories = DirectoryTreeBuilder.getDirectoriesBottomUp(tree);
+        for (const dir of directories) {
+            await this.generateDirectoryIndex(dir, workspaceFolder.uri.fsPath, tree);
+        }
+        await this.generateRootIndex(tree, workspaceFolder.uri.fsPath);
+
         // Regenerate analyses using existing file summaries
         progress.report({ message: 'Regenerating API reference...' });
         const apiRefGenerator = new APIReferenceGenerator();
@@ -708,6 +728,204 @@ export class CodebaseAnalyzer {
         }
     }
 
+    /**
+     * Split a large file into logical chunks at top-level function/class boundaries.
+     * Each chunk includes the file header (imports, module-level declarations) as
+     * shared context, followed by a group of top-level units whose total size fits
+     * within maxChunkChars.
+     *
+     * If the file has no detectable top-level boundaries, returns a single chunk
+     * with the full content so the caller can fall back to skeleton/truncation.
+     */
+    private splitFileIntoChunks(
+        content: string,
+        maxChunkChars: number = 12000
+    ): Array<{ chunk: string; index: number; total: number }> {
+
+        const lines = content.split('\n');
+
+        // A "top-level boundary" is a line at column 0 that begins a new logical unit.
+        // We match decorators separately so stacked decorators (@with_retry + @router.x)
+        // stay with the function they decorate.
+        const isTopLevelBoundary = (line: string): boolean => {
+            if (line[0] === ' ' || line[0] === '\t') { return false; } // indented
+            const t = line.trimStart();
+            return (
+                /^@[\w]/.test(t) ||                                         // decorator
+                /^(async\s+)?def\s/.test(t) ||                              // Python def
+                /^class\s/.test(t) ||                                       // Python/TS class
+                /^(export\s+)?(default\s+)?(async\s+)?function[\s*]/.test(t) || // JS/TS function
+                /^(export\s+)?(abstract\s+|default\s+)?class\s/.test(t) || // TS class
+                /^(export\s+)?(const|let|var)\s+\w+\s*=\s*(async\s*)?\(/.test(t) // arrow fn export
+            );
+        };
+
+        // Collect header lines (everything before the first top-level boundary)
+        let headerEnd = 0;
+        for (let i = 0; i < lines.length; i++) {
+            if (isTopLevelBoundary(lines[i])) { headerEnd = i; break; }
+            if (i === lines.length - 1) { headerEnd = lines.length; } // no boundaries found
+        }
+        const headerText = lines.slice(0, headerEnd).join('\n');
+
+        if (headerEnd === lines.length) {
+            // No top-level boundaries — return as single chunk
+            return [{ chunk: content, index: 0, total: 1 }];
+        }
+
+        // Group lines from headerEnd onward into top-level units.
+        // A unit starts at a boundary line and ends just before the next boundary.
+        const units: string[] = [];
+        let unitStart = headerEnd;
+        for (let i = headerEnd + 1; i <= lines.length; i++) {
+            if (i === lines.length || isTopLevelBoundary(lines[i])) {
+                units.push(lines.slice(unitStart, i).join('\n'));
+                unitStart = i;
+            }
+        }
+
+        if (units.length === 0) {
+            return [{ chunk: content, index: 0, total: 1 }];
+        }
+
+        // Pack units into chunks that fit within maxChunkChars (accounting for header)
+        const maxBody = maxChunkChars - headerText.length - 50;
+        const groups: string[][] = [];
+        let currentGroup: string[] = [];
+        let currentSize = 0;
+
+        for (const unit of units) {
+            if (currentSize + unit.length > maxBody && currentGroup.length > 0) {
+                groups.push(currentGroup);
+                currentGroup = [];
+                currentSize = 0;
+            }
+            currentGroup.push(unit);
+            currentSize += unit.length;
+        }
+        if (currentGroup.length > 0) { groups.push(currentGroup); }
+
+        if (groups.length <= 1) {
+            // Everything fits in one chunk anyway
+            return [{ chunk: content, index: 0, total: 1 }];
+        }
+
+        return groups.map((group, idx) => ({
+            chunk: headerText + '\n\n' + group.join('\n'),
+            index: idx,
+            total: groups.length,
+        }));
+    }
+
+    /**
+     * Merge an array of partial FileSummary objects (from chunk passes) into one
+     * coherent summary. Deduplicates keyComponents/publicAPI/codeLinks by name/signature.
+     */
+    private mergePartialSummaries(partials: FileSummary[]): FileSummary {
+        if (partials.length === 0) { return this.createEmptyStructure(); }
+        if (partials.length === 1) { return partials[0]; }
+
+        const merged = this.createEmptyStructure();
+
+        // Purpose: first non-empty value
+        merged.purpose = partials.find(p => p.purpose?.trim())?.purpose ?? '';
+
+        // keyComponents: union deduplicated by name
+        const compSeen = new Set<string>();
+        for (const p of partials) {
+            for (const c of (p.keyComponents || [])) {
+                if (c.name && !compSeen.has(c.name)) {
+                    compSeen.add(c.name);
+                    merged.keyComponents.push(c);
+                }
+            }
+        }
+
+        // publicAPI: union deduplicated by signature
+        const apiSeen = new Set<string>();
+        for (const p of partials) {
+            for (const a of (p.publicAPI || [])) {
+                const key = a.signature || a.description || '';
+                if (key && !apiSeen.has(key)) {
+                    apiSeen.add(key);
+                    merged.publicAPI.push(a);
+                }
+            }
+        }
+
+        // codeLinks: union deduplicated by symbol
+        const linkSeen = new Set<string>();
+        for (const p of partials) {
+            for (const l of (p.codeLinks || [])) {
+                if (l.symbol && !linkSeen.has(l.symbol)) {
+                    linkSeen.add(l.symbol);
+                    merged.codeLinks.push(l);
+                }
+            }
+        }
+
+        // implementationNotes: join unique sentences/lines
+        const noteSeen = new Set<string>();
+        const noteLines: string[] = [];
+        for (const p of partials) {
+            for (const line of (p.implementationNotes || '').split('\n')) {
+                const t = line.trim();
+                if (t && !noteSeen.has(t)) {
+                    noteSeen.add(t);
+                    noteLines.push(line);
+                }
+            }
+        }
+        merged.implementationNotes = noteLines.join('\n');
+
+        return merged;
+    }
+
+    /**
+     * Generate a human-readable Markdown summary from a FileSummary JSON object.
+     * Used when the summary was assembled from multiple chunk passes rather than
+     * produced directly by the LLM as a single markdown block.
+     */
+    private generateMarkdownFromSummary(relPath: string, summary: FileSummary): string {
+        const name = path.basename(relPath, path.extname(relPath));
+        const lines: string[] = [`# ${name}`, ''];
+
+        lines.push('## Purpose', '', summary.purpose || '(see implementation)', '');
+
+        if (summary.keyComponents?.length) {
+            lines.push('## Key Components', '');
+            for (const c of summary.keyComponents) {
+                const loc = c.lines ? ` (lines ${c.lines})` : '';
+                lines.push(`- [\`${c.name}\`](${relPath}#L${c.lines?.split('-')[0] ?? ''})${loc}: ${c.description}`);
+            }
+            lines.push('');
+        }
+
+        if (summary.publicAPI?.length) {
+            lines.push('## Public API', '');
+            for (const a of summary.publicAPI) {
+                const loc = a.lines ? ` (lines ${a.lines})` : '';
+                lines.push(`- [\`${a.signature}\`](${relPath}#L${a.lines?.split('-')[0] ?? ''})${loc}`);
+                lines.push(`  - **Description**: ${a.description}`);
+            }
+            lines.push('');
+        }
+
+        if (summary.codeLinks?.length) {
+            lines.push('## Code Links', '');
+            for (const l of summary.codeLinks) {
+                lines.push(`- [${l.symbol}](${l.path})`);
+            }
+            lines.push('');
+        }
+
+        if (summary.implementationNotes?.trim()) {
+            lines.push('## Implementation Notes', '', summary.implementationNotes, '');
+        }
+
+        return lines.join('\n');
+    }
+
     private async analyzeSingleFile(
         filePath: string,
         workspacePath: string,
@@ -716,42 +934,98 @@ export class CodebaseAnalyzer {
         const content = fs.readFileSync(filePath, 'utf-8');
         const relPath = path.relative(workspacePath, filePath);
         const fileExt = path.extname(filePath);
-        
+
         // Step 1: Extract imports using static analysis (100% reliable)
         const staticDeps = StaticImportAnalyzer.analyzeImports(content, relPath, workspacePath);
-        
-        // Step 2: Build prompt using PromptManager (language + framework aware)
+
         const promptManager = PromptManager.getInstance();
-        const truncatedContent = content.length > 8000 ? content.substring(0, 8000) + '\n...[truncated]' : content;
-        
-        const prompt = await promptManager.getPromptForFile('file-summary', filePath, {
-            relativePath: relPath.replace(/\\/g, '/'),
-            fileName: path.basename(relPath, fileExt),
-            fileExtension: fileExt.substring(1) || 'txt',
-            content: truncatedContent
-        });
-        
-        const messages = [
-            vscode.LanguageModelChatMessage.User(prompt)
-        ];
-        
-        const response = await model.sendRequest(messages, {
-            justification: 'Generating codebase summary for LUNA Encyclopedia'
-        });
-        
-        let fullResponse = '';
-        for await (const chunk of response.text) {
-            fullResponse += chunk;
+        const SINGLE_PASS_LIMIT = 24000; // ~6k tokens — send verbatim if under this
+
+        // Step 2a: Small file — single LLM call with full content
+        if (content.length <= SINGLE_PASS_LIMIT) {
+            const prompt = await promptManager.getPromptForFile('file-summary', filePath, {
+                relativePath: relPath.replace(/\\/g, '/'),
+                fileName: path.basename(relPath, fileExt),
+                fileExtension: fileExt.substring(1) || 'txt',
+                content,
+            });
+            const response = await model.sendRequest(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                { justification: 'Generating codebase summary for LUNA Encyclopedia' }
+            );
+            let fullResponse = '';
+            for await (const part of response.text) { fullResponse += part; }
+            const { markdown, json } = this.parseResponse(fullResponse, relPath);
+            this.saveSummary(workspacePath, relPath, markdown, this.mergeDependencies(json, staticDeps));
+            return;
         }
-        
-        // Step 3: Parse Copilot's response
-        const { markdown, json } = this.parseResponse(fullResponse, relPath);
-        
-        // Step 4: Merge static dependencies with Copilot's analysis
-        // Static analysis takes precedence for accuracy
-        const mergedJson = this.mergeDependencies(json, staticDeps);
-        
-        // Save both formats
+
+        // Step 2b: Large file — split into logical chunks and analyze each separately.
+        // Since we use a no-cost model, multiple passes are free and far more accurate
+        // than any truncation or skeleton approach.
+        const chunks = this.splitFileIntoChunks(content, 12000);
+
+        if (chunks.length <= 1) {
+            // File didn't split at clean boundaries — send first SINGLE_PASS_LIMIT chars
+            // with a note that it's truncated, so at least we get something reasonable.
+            this.log(`[${relPath}] Large file (${Math.round(content.length / 1024)}KB) — no clean split boundaries, truncating`);
+            const truncated = content.substring(0, SINGLE_PASS_LIMIT) + '\n# ...[file truncated for summary]';
+            const prompt = await promptManager.getPromptForFile('file-summary', filePath, {
+                relativePath: relPath.replace(/\\/g, '/'),
+                fileName: path.basename(relPath, fileExt),
+                fileExtension: fileExt.substring(1) || 'txt',
+                content: truncated,
+            });
+            const response = await model.sendRequest(
+                [vscode.LanguageModelChatMessage.User(prompt)],
+                { justification: 'Generating codebase summary for LUNA Encyclopedia' }
+            );
+            let fullResponse = '';
+            for await (const part of response.text) { fullResponse += part; }
+            const { markdown, json } = this.parseResponse(fullResponse, relPath);
+            this.saveSummary(workspacePath, relPath, markdown, this.mergeDependencies(json, staticDeps));
+            return;
+        }
+
+        this.log(`[${relPath}] Large file (${Math.round(content.length / 1024)}KB) → ${chunks.length} chunks`);
+
+        const partialSummaries: FileSummary[] = [];
+
+        for (const { chunk, index, total } of chunks) {
+            const annotatedContent =
+                `[CHUNK ${index + 1}/${total} of ${relPath} — extract all components and public API visible in this excerpt]\n\n${chunk}`;
+
+            const prompt = await promptManager.getPromptForFile('file-summary', filePath, {
+                relativePath: relPath.replace(/\\/g, '/'),
+                fileName: path.basename(relPath, fileExt),
+                fileExtension: fileExt.substring(1) || 'txt',
+                content: annotatedContent,
+            });
+
+            try {
+                const response = await model.sendRequest(
+                    [vscode.LanguageModelChatMessage.User(prompt)],
+                    { justification: 'Generating codebase summary for LUNA Encyclopedia' }
+                );
+                let chunkResponse = '';
+                for await (const part of response.text) { chunkResponse += part; }
+                const { json } = this.parseResponse(chunkResponse, relPath);
+                partialSummaries.push(json);
+                this.log(`[${relPath}] Chunk ${index + 1}/${total}: ${json.keyComponents?.length ?? 0} components, ${json.publicAPI?.length ?? 0} API entries`);
+            } catch (err) {
+                this.log(`[${relPath}] Chunk ${index + 1}/${total} failed: ${err}`);
+            }
+        }
+
+        if (partialSummaries.length === 0) {
+            this.log(`[${relPath}] All chunks failed — saving empty summary`);
+            this.saveSummary(workspacePath, relPath, `# ${path.basename(relPath)}\n\n(Analysis failed)`, this.mergeDependencies(this.createEmptyStructure(), staticDeps));
+            return;
+        }
+
+        // Step 3: Merge partial summaries and save
+        const mergedJson = this.mergeDependencies(this.mergePartialSummaries(partialSummaries), staticDeps);
+        const markdown = this.generateMarkdownFromSummary(relPath, mergedJson);
         this.saveSummary(workspacePath, relPath, markdown, mergedJson);
     }
     

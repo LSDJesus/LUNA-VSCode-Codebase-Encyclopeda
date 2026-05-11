@@ -272,7 +272,124 @@ export class APIReferenceGenerator {
     }
 
     /**
-     * Extract endpoints from a file using Copilot
+     * Return line indices (0-based) where route decorator patterns start.
+     * Uses framework-agnostic patterns so any router variable name is matched
+     * (e.g. @router., @app., @characters_router., @api_router., etc.)
+     */
+    private findRouteDecoratorLines(lines: string[], framework: string | null): number[] {
+        // Universal HTTP-method decorator patterns.
+        // `@[\w]+(?:\.\w+)*` matches any chained identifier: router, app, characters_router,
+        // api_router, app.router, etc. — regardless of what the variable is named.
+        const patterns: RegExp[] = [
+            // Python FastAPI / Flask / any @<var>.<method>(
+            /^\s*@[\w]+(?:\.\w+)*\.(get|post|put|patch|delete|head|options|api_route)\s*\(/i,
+            // Python Flask explicit blueprint.route(
+            /^\s*@[\w]+(?:\.\w+)*\.route\s*\(/i,
+            // NestJS / TypeScript class-level decorators @Get( @Post( etc.
+            /^\s*@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(/,
+            // Spring Boot @GetMapping @PostMapping etc.
+            /^\s*@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*[\(@]/,
+            // ASP.NET Core [HttpGet] [HttpPost] etc.
+            /^\s*\[(HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|Route)\]/,
+        ];
+
+        const hits: number[] = [];
+        for (let i = 0; i < lines.length; i++) {
+            if (patterns.some(p => p.test(lines[i]))) {
+                hits.push(i);
+            }
+        }
+        return hits;
+    }
+
+    /**
+     * Send one chunk of content to the LLM and return parsed endpoints.
+     * The chunk may be a complete file or a route-boundary slice of a larger file.
+     */
+    private async extractEndpointsFromChunk(
+        filePath: string,
+        relativePath: string,
+        chunk: string,
+        framework: string | null,
+        model: vscode.LanguageModelChat,
+        isPartial: boolean = false
+    ): Promise<APIEndpoint[]> {
+        const fileExt = path.extname(filePath);
+
+        const promptManager = PromptManager.getInstance();
+        const baseContent = isPartial
+            ? `[EXCERPT — this is a partial slice of ${relativePath}; extract only the endpoints visible in this excerpt]\n\n${chunk}`
+            : chunk;
+
+        const prompt = await promptManager.getPromptForFile('api-extraction', filePath, {
+            relativePath,
+            fileName: path.basename(filePath),
+            fileExtension: fileExt.substring(1) || 'txt',
+            content: baseContent,
+            framework: framework || 'unknown'
+        });
+
+        const messages = [vscode.LanguageModelChatMessage.User(prompt)];
+        const response = await model.sendRequest(messages, {
+            justification: 'Extracting API endpoints for LUNA API Reference'
+        });
+
+        let responseText = '';
+        for await (const chunk of response.text) {
+            responseText += chunk;
+        }
+
+        // Parse JSON from response
+        let jsonText: string | null = null;
+        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+            jsonText = jsonMatch[1];
+        } else {
+            const s = responseText.indexOf('{');
+            const e = responseText.lastIndexOf('}');
+            if (s !== -1 && e !== -1) { jsonText = responseText.substring(s, e + 1); }
+        }
+
+        if (!jsonText) {
+            this.log('[' + relativePath + '] No JSON found in response');
+            return [];
+        }
+
+        let parsed: any;
+        try {
+            parsed = JSON.parse(jsonText);
+        } catch {
+            // Repair common LLM JSON mistakes
+            let fixed = jsonText
+                .replace(/,(\s*[}\]])/g, '$1')
+                .replace(/}(\s*){/g, '},$1{')
+                .replace(/](\s*)\[/g, '],$1[')
+                .replace(/,+/g, ',');
+            try {
+                parsed = JSON.parse(fixed);
+                this.log('[' + relativePath + '] Auto-repaired malformed JSON');
+            } catch {
+                const em = jsonText.match(/"endpoints"\s*:\s*\[([\s\S]*?)\]/);
+                if (em) {
+                    try {
+                        parsed = JSON.parse('{"endpoints":[' + em[1].replace(/,(\s*)\]/g, '$1]') + ']}');
+                        this.log('[' + relativePath + '] Salvaged endpoints array from malformed JSON');
+                    } catch {
+                        return [];
+                    }
+                } else {
+                    return [];
+                }
+            }
+        }
+
+        return (parsed.endpoints || []).map((ep: any) => ({ ...ep, file: relativePath }));
+    }
+
+    /**
+     * Extract endpoints from a file using Copilot.
+     * For large files, splits at route-decorator boundaries and runs the LLM
+     * on each batch separately, then merges and deduplicates by method+path.
      */
     private async extractEndpoints(
         filePath: string,
@@ -289,93 +406,67 @@ export class APIReferenceGenerator {
             this.frameworks.add(framework);
         }
 
-        const promptManager = PromptManager.getInstance();
-        const prompt = await promptManager.getPromptForFile('api-extraction', filePath, {
-            relativePath,
-            fileName: path.basename(filePath),
-            fileExtension: fileExt.substring(1) || 'txt',
-            content: content.length > 8000 ? content.substring(0, 8000) + '\n...[truncated]' : content,
-            framework: framework || 'unknown'
+        // Max chars per LLM call (~24 KB ≈ 6 000 tokens, well inside all model limits)
+        const CHUNK_CHARS = 24000;
+        const ROUTES_PER_BATCH = 8;
+
+        if (content.length <= CHUNK_CHARS) {
+            // Small file — single pass, full content
+            return this.extractEndpointsFromChunk(filePath, relativePath, content, framework, model, false);
+        }
+
+        // Large file: find all route decorator positions first
+        const lines = content.split('\n');
+        const routeLineIndices = this.findRouteDecoratorLines(lines, framework);
+        this.log(`[${relativePath}] ${routeLineIndices.length} route decorators found at lines: ${routeLineIndices.slice(0, 10).map(l => l + 1).join(', ')}${routeLineIndices.length > 10 ? '...' : ''}`);
+
+        if (routeLineIndices.length === 0) {
+            // No route decorators found via regex — single pass with first CHUNK_CHARS
+            this.log(`[${relativePath}] No route decorators via regex; sending first ${CHUNK_CHARS} chars`);
+            return this.extractEndpointsFromChunk(filePath, relativePath, content.substring(0, CHUNK_CHARS), framework, model, content.length > CHUNK_CHARS);
+        }
+
+        // Slice the file into batches aligned to route boundaries
+        const allEndpoints: APIEndpoint[] = [];
+
+        for (let i = 0; i < routeLineIndices.length; i += ROUTES_PER_BATCH) {
+            const batchFirstLine = routeLineIndices[i];
+            const batchLastIdx = Math.min(i + ROUTES_PER_BATCH - 1, routeLineIndices.length - 1);
+            // Chunk ends at the start of the NEXT batch (or EOF)
+            const chunkEndLine = (batchLastIdx + 1 < routeLineIndices.length)
+                ? routeLineIndices[batchLastIdx + 1]
+                : lines.length;
+
+            // Include up to 30 lines of leading context (imports, shared vars)
+            const contextStart = Math.max(0, batchFirstLine - 30);
+            const chunk = lines.slice(contextStart, chunkEndLine).join('\n');
+
+            this.log(`[${relativePath}] Batch ${Math.floor(i / ROUTES_PER_BATCH) + 1}: lines ${batchFirstLine + 1}–${chunkEndLine} (${routeLineIndices.slice(i, i + ROUTES_PER_BATCH).length} routes)`);
+
+            try {
+                const batchEndpoints = await this.extractEndpointsFromChunk(
+                    filePath, relativePath, chunk, framework, model, true
+                );
+                allEndpoints.push(...batchEndpoints);
+            } catch (err) {
+                this.log(`[${relativePath}] Batch ${Math.floor(i / ROUTES_PER_BATCH) + 1} failed: ${err}`);
+            }
+        }
+
+        // Deduplicate by method+path (keep first occurrence)
+        const seen = new Set<string>();
+        const deduped = allEndpoints.filter(ep => {
+            const key = `${(ep.method || '').toUpperCase()}:${ep.path}`;
+            if (seen.has(key)) { return false; }
+            seen.add(key);
+            return true;
         });
 
-        try {
-            const messages = [vscode.LanguageModelChatMessage.User(prompt)];
-            const response = await model.sendRequest(messages, {
-                justification: 'Extracting API endpoints for LUNA API Reference'
-            });
-
-            let responseText = '';
-            for await (const chunk of response.text) {
-                responseText += chunk;
-            }
-
-            // Try markdown code block format first
-            let jsonText = null;
-            const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/);
-            if (jsonMatch) {
-                jsonText = jsonMatch[1];
-            } else {
-                // Fallback: try to extract raw JSON object
-                const jsonStartIdx = responseText.indexOf('{');
-                const jsonEndIdx = responseText.lastIndexOf('}');
-                if (jsonStartIdx !== -1 && jsonEndIdx !== -1) {
-                    jsonText = responseText.substring(jsonStartIdx, jsonEndIdx + 1);
-                }
-            }
-
-            if (!jsonText) {
-                this.log('[' + relativePath + '] No JSON found in response');
-                return [];
-            }
-
-            // Try to parse, with fallback to repair common issues
-            let parsed;
-            try {
-                parsed = JSON.parse(jsonText);
-            } catch (parseError) {
-                // Aggressive JSON repair for common Copilot mistakes
-                let fixed = jsonText
-                    // Remove trailing commas
-                    .replace(/,(\s*[}\]])/g, '$1')
-                    // Add missing commas between array/object elements
-                    .replace(/}(\s*){/g, '},{')
-                    .replace(/](\s*)\[/g, '],$1[')
-                    // Fix unescaped quotes in strings (basic attempt)
-                    .replace(/": "([^"]*)"([^,}\]]*?)"/g, '": "$1\\"$2"')
-                    // Remove any duplicate commas
-                    .replace(/,+/g, ',');
-                
-                try {
-                    parsed = JSON.parse(fixed);
-                    this.log('[' + relativePath + '] Auto-repaired malformed JSON');
-                } catch (secondError) {
-                    // Last resort: try to salvage what we can by finding the endpoints array
-                    try {
-                        const endpointsMatch = jsonText.match(/"endpoints"\s*:\s*\[([\s\S]*?)\]/);
-                        if (endpointsMatch) {
-                            // Wrap in valid JSON and try again
-                            const salvaged = '{"endpoints":[' + endpointsMatch[1].replace(/,(\s*)\]/g, '$1]') + ']}';
-                            parsed = JSON.parse(salvaged);
-                            this.log('[' + relativePath + '] Salvaged endpoints from malformed JSON');
-                        } else {
-                            throw parseError; // Give up, throw original error
-                        }
-                    } catch {
-                        throw parseError;
-                    }
-                }
-            }
-
-            const endpoints = (parsed.endpoints || []).map((ep: any) => ({
-                ...ep,
-                file: relativePath
-            }));
-            
-            return endpoints;
-        } catch (error) {
-            this.log('[' + relativePath + '] Parse error: ' + (error instanceof Error ? error.message : String(error)));
-            throw error; // Re-throw so retry logic can handle it
+        if (deduped.length < allEndpoints.length) {
+            this.log(`[${relativePath}] Deduped ${allEndpoints.length} → ${deduped.length} endpoints`);
         }
+
+        return deduped;
     }
 
     /**

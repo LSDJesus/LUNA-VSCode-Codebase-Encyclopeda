@@ -1,6 +1,6 @@
 {
   "name": "luna-encyclopedia-mcp-server",
-  "version": "1.2.1",
+  "version": "1.2.4",
   "description": "MCP server for LUNA Codebase Encyclopedia - AI-optimized codebase navigation",
   "type": "module",
   "main": "dist/index.js",
