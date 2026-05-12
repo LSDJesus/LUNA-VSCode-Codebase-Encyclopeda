@@ -276,70 +276,94 @@ export class APIReferenceGenerator {
      * Uses framework-agnostic patterns so any router variable name is matched
      * (e.g. @router., @app., @characters_router., @api_router., etc.)
      */
-    private findRouteDecoratorLines(lines: string[], framework: string | null): number[] {
-        // Universal HTTP-method decorator patterns.
-        // `@[\w]+(?:\.\w+)*` matches any chained identifier: router, app, characters_router,
-        // api_router, app.router, etc. — regardless of what the variable is named.
+    private findRouteDecoratorLines(lines: string[]): number[] {
         const patterns: RegExp[] = [
-            // Python FastAPI / Flask / any @<var>.<method>(
             /^\s*@[\w]+(?:\.\w+)*\.(get|post|put|patch|delete|head|options|api_route)\s*\(/i,
-            // Python Flask explicit blueprint.route(
             /^\s*@[\w]+(?:\.\w+)*\.route\s*\(/i,
-            // NestJS / TypeScript class-level decorators @Get( @Post( etc.
             /^\s*@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(/,
-            // Spring Boot @GetMapping @PostMapping etc.
             /^\s*@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*[\(@]/,
-            // ASP.NET Core [HttpGet] [HttpPost] etc.
             /^\s*\[(HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|Route)\]/,
         ];
-
         const hits: number[] = [];
         for (let i = 0; i < lines.length; i++) {
-            if (patterns.some(p => p.test(lines[i]))) {
-                hits.push(i);
-            }
+            if (patterns.some(p => p.test(lines[i]))) { hits.push(i); }
         }
         return hits;
     }
 
     /**
-     * Send one chunk of content to the LLM and return parsed endpoints.
-     * The chunk may be a complete file or a route-boundary slice of a larger file.
+     * Deterministically extract the router prefix from the file content.
+     * Returns the prefix string (e.g. "/narrates") or null if not found.
      */
-    private async extractEndpointsFromChunk(
-        filePath: string,
-        relativePath: string,
-        chunk: string,
-        framework: string | null,
-        model: vscode.LanguageModelChat,
-        isPartial: boolean = false
-    ): Promise<APIEndpoint[]> {
-        const fileExt = path.extname(filePath);
+    private detectRouterPrefix(content: string): string | null {
+        // Python FastAPI / Starlette: APIRouter(prefix="/foo") or APIRouter(prefix='/foo')
+        const fastapiMatch = content.match(/APIRouter\s*\([^)]*prefix\s*=\s*["']([^"']+)["']/);
+        if (fastapiMatch) { return fastapiMatch[1]; }
 
-        const promptManager = PromptManager.getInstance();
-        const baseContent = isPartial
-            ? `[EXCERPT — this is a partial slice of ${relativePath}; extract only the endpoints visible in this excerpt]\n\n${chunk}`
-            : chunk;
+        // NestJS: @Controller('/prefix') or @Controller("prefix")
+        const nestMatch = content.match(/@Controller\s*\(\s*["']([^"']+)["']\s*\)/);
+        if (nestMatch) { return nestMatch[1].startsWith('/') ? nestMatch[1] : '/' + nestMatch[1]; }
 
-        const prompt = await promptManager.getPromptForFile('api-extraction', filePath, {
-            relativePath,
-            fileName: path.basename(filePath),
-            fileExtension: fileExt.substring(1) || 'txt',
-            content: baseContent,
-            framework: framework || 'unknown'
-        });
+        // Spring Boot: @RequestMapping("/prefix")
+        const springMatch = content.match(/@RequestMapping\s*\(\s*["']([^"']+)["']\s*\)/);
+        if (springMatch) { return springMatch[1]; }
 
-        const messages = [vscode.LanguageModelChatMessage.User(prompt)];
-        const response = await model.sendRequest(messages, {
-            justification: 'Extracting API endpoints for LUNA API Reference'
-        });
+        // Express: router.use('/prefix', ...) or app.use('/prefix', router)
+        const expressMatch = content.match(/\.use\s*\(\s*["']([/][^"']+)["']/);
+        if (expressMatch) { return expressMatch[1]; }
 
-        let responseText = '';
-        for await (const chunk of response.text) {
-            responseText += chunk;
+        return null;
+    }
+
+    /**
+     * Build a map of (normalised path + method) → 1-based line number by
+     * regex-parsing every route decorator in the file. This is used post-LLM
+     * to fill missing `lines` fields without relying on the model.
+     *
+     * Key format: "METHOD /in-router-path" (e.g. "GET /stories/{story_id}")
+     */
+    private buildDecoratorLineMap(lines: string[]): Map<string, number> {
+        const map = new Map<string, number>();
+        // Matches: @<var>.<method>("/path"  or  @<var>.<method>('/path'
+        const decoratorRe = /^\s*@[\w.]+\.(get|post|put|patch|delete|head|options|api_route)\s*\(\s*["']([^"']+)["']/i;
+        // NestJS: @Get("/path") @Post('/path')
+        const nestRe = /^\s*@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["']([^"']+)["']/;
+        // Spring: @GetMapping("/path")
+        const springRe = /^\s*@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\s*\(\s*["']([^"']+)["']/;
+
+        const springMethodMap: Record<string, string> = {
+            GetMapping: 'GET', PostMapping: 'POST', PutMapping: 'PUT',
+            DeleteMapping: 'DELETE', PatchMapping: 'PATCH'
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            let m = line.match(decoratorRe);
+            if (m) {
+                const method = (m[1] === 'api_route' ? 'GET' : m[1]).toUpperCase();
+                const p = m[2].startsWith('/') ? m[2] : '/' + m[2];
+                map.set(`${method} ${p}`, i + 1); // 1-based
+                continue;
+            }
+            m = line.match(nestRe);
+            if (m) {
+                const p = m[2].startsWith('/') ? m[2] : '/' + m[2];
+                map.set(`${m[1].toUpperCase()} ${p}`, i + 1);
+                continue;
+            }
+            m = line.match(springRe);
+            if (m) {
+                const p = m[2].startsWith('/') ? m[2] : '/' + m[2];
+                map.set(`${springMethodMap[m[1]] ?? 'GET'} ${p}`, i + 1);
+            }
         }
+        return map;
+    }
 
-        // Parse JSON from response
+    /**
+     * Parse the JSON response from one LLM call and return raw endpoint objects.
+     */
+    private parseEndpointResponse(responseText: string, relativePath: string): any[] {
         let jsonText: string | null = null;
         const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/);
         if (jsonMatch) {
@@ -349,17 +373,12 @@ export class APIReferenceGenerator {
             const e = responseText.lastIndexOf('}');
             if (s !== -1 && e !== -1) { jsonText = responseText.substring(s, e + 1); }
         }
-
-        if (!jsonText) {
-            this.log('[' + relativePath + '] No JSON found in response');
-            return [];
-        }
+        if (!jsonText) { return []; }
 
         let parsed: any;
         try {
             parsed = JSON.parse(jsonText);
         } catch {
-            // Repair common LLM JSON mistakes
             let fixed = jsonText
                 .replace(/,(\s*[}\]])/g, '$1')
                 .replace(/}(\s*){/g, '},$1{')
@@ -374,22 +393,58 @@ export class APIReferenceGenerator {
                     try {
                         parsed = JSON.parse('{"endpoints":[' + em[1].replace(/,(\s*)\]/g, '$1]') + ']}');
                         this.log('[' + relativePath + '] Salvaged endpoints array from malformed JSON');
-                    } catch {
-                        return [];
-                    }
-                } else {
-                    return [];
-                }
+                    } catch { return []; }
+                } else { return []; }
             }
         }
+        return parsed.endpoints || [];
+    }
 
-        return (parsed.endpoints || []).map((ep: any) => ({ ...ep, file: relativePath }));
+    /**
+     * Send one chunk of content to the LLM and return raw (unprefixed) endpoint objects.
+     */
+    private async extractEndpointsFromChunk(
+        filePath: string,
+        relativePath: string,
+        chunk: string,
+        lineOffset: number,   // 1-based line number of first line in this chunk
+        framework: string | null,
+        model: vscode.LanguageModelChat,
+        isPartial: boolean = false
+    ): Promise<any[]> {
+        const fileExt = path.extname(filePath);
+        const promptManager = PromptManager.getInstance();
+
+        const header = isPartial
+            ? `[EXCERPT of ${relativePath} — lines ${lineOffset}+ of the full file. Use these offsets for the \`lines\` field.]\n\n`
+            : '';
+
+        const prompt = await promptManager.getPromptForFile('api-extraction', filePath, {
+            relativePath,
+            fileName: path.basename(filePath),
+            fileExtension: fileExt.substring(1) || 'txt',
+            content: header + chunk,
+            framework: framework || 'unknown'
+        });
+
+        const messages = [vscode.LanguageModelChatMessage.User(prompt)];
+        const response = await model.sendRequest(messages, {
+            justification: 'Extracting API endpoints for LUNA API Reference'
+        });
+
+        let responseText = '';
+        for await (const part of response.text) { responseText += part; }
+
+        return this.parseEndpointResponse(responseText, relativePath);
     }
 
     /**
      * Extract endpoints from a file using Copilot.
-     * For large files, splits at route-decorator boundaries and runs the LLM
-     * on each batch separately, then merges and deduplicates by method+path.
+     *
+     * Post-processing (all deterministic, no LLM):
+     *   1. Apply router prefix to every path that is missing it.
+     *   2. Fill null/missing `lines` from the decorator line map.
+     *   3. Deduplicate within the file by method+path.
      */
     private async extractEndpoints(
         filePath: string,
@@ -400,71 +455,103 @@ export class APIReferenceGenerator {
         const fileExt = path.extname(filePath);
         const language = this.detectLanguage(fileExt);
 
-        // Detect framework
         const framework = this.detectFramework(content, language);
-        if (framework) {
-            this.frameworks.add(framework);
+        if (framework) { this.frameworks.add(framework); }
+
+        // Deterministic metadata extracted before any LLM call
+        const prefix = this.detectRouterPrefix(content);          // e.g. "/narrates"
+        const lines = content.split('\n');
+        const decoratorLineMap = this.buildDecoratorLineMap(lines); // method+path → line
+
+        if (prefix) {
+            this.log(`[${relativePath}] Router prefix detected: ${prefix}`);
         }
 
-        // Max chars per LLM call (~24 KB ≈ 6 000 tokens, well inside all model limits)
         const CHUNK_CHARS = 24000;
         const ROUTES_PER_BATCH = 8;
+        const rawEndpoints: any[] = [];
 
         if (content.length <= CHUNK_CHARS) {
-            // Small file — single pass, full content
-            return this.extractEndpointsFromChunk(filePath, relativePath, content, framework, model, false);
-        }
+            rawEndpoints.push(...await this.extractEndpointsFromChunk(
+                filePath, relativePath, content, 1, framework, model, false
+            ));
+        } else {
+            const routeLineIndices = this.findRouteDecoratorLines(lines);
+            this.log(`[${relativePath}] ${routeLineIndices.length} route decorators found`);
 
-        // Large file: find all route decorator positions first
-        const lines = content.split('\n');
-        const routeLineIndices = this.findRouteDecoratorLines(lines, framework);
-        this.log(`[${relativePath}] ${routeLineIndices.length} route decorators found at lines: ${routeLineIndices.slice(0, 10).map(l => l + 1).join(', ')}${routeLineIndices.length > 10 ? '...' : ''}`);
-
-        if (routeLineIndices.length === 0) {
-            // No route decorators found via regex — single pass with first CHUNK_CHARS
-            this.log(`[${relativePath}] No route decorators via regex; sending first ${CHUNK_CHARS} chars`);
-            return this.extractEndpointsFromChunk(filePath, relativePath, content.substring(0, CHUNK_CHARS), framework, model, content.length > CHUNK_CHARS);
-        }
-
-        // Slice the file into batches aligned to route boundaries
-        const allEndpoints: APIEndpoint[] = [];
-
-        for (let i = 0; i < routeLineIndices.length; i += ROUTES_PER_BATCH) {
-            const batchFirstLine = routeLineIndices[i];
-            const batchLastIdx = Math.min(i + ROUTES_PER_BATCH - 1, routeLineIndices.length - 1);
-            // Chunk ends at the start of the NEXT batch (or EOF)
-            const chunkEndLine = (batchLastIdx + 1 < routeLineIndices.length)
-                ? routeLineIndices[batchLastIdx + 1]
-                : lines.length;
-
-            // Include up to 30 lines of leading context (imports, shared vars)
-            const contextStart = Math.max(0, batchFirstLine - 30);
-            const chunk = lines.slice(contextStart, chunkEndLine).join('\n');
-
-            this.log(`[${relativePath}] Batch ${Math.floor(i / ROUTES_PER_BATCH) + 1}: lines ${batchFirstLine + 1}–${chunkEndLine} (${routeLineIndices.slice(i, i + ROUTES_PER_BATCH).length} routes)`);
-
-            try {
-                const batchEndpoints = await this.extractEndpointsFromChunk(
-                    filePath, relativePath, chunk, framework, model, true
-                );
-                allEndpoints.push(...batchEndpoints);
-            } catch (err) {
-                this.log(`[${relativePath}] Batch ${Math.floor(i / ROUTES_PER_BATCH) + 1} failed: ${err}`);
+            if (routeLineIndices.length === 0) {
+                this.log(`[${relativePath}] No route decorators via regex; sending first ${CHUNK_CHARS} chars`);
+                rawEndpoints.push(...await this.extractEndpointsFromChunk(
+                    filePath, relativePath, content.substring(0, CHUNK_CHARS), 1, framework, model, true
+                ));
+            } else {
+                for (let i = 0; i < routeLineIndices.length; i += ROUTES_PER_BATCH) {
+                    const batchFirstLine = routeLineIndices[i];
+                    const batchLastIdx = Math.min(i + ROUTES_PER_BATCH - 1, routeLineIndices.length - 1);
+                    const chunkEndLine = (batchLastIdx + 1 < routeLineIndices.length)
+                        ? routeLineIndices[batchLastIdx + 1]
+                        : lines.length;
+                    const contextStart = Math.max(0, batchFirstLine - 30);
+                    const chunk = lines.slice(contextStart, chunkEndLine).join('\n');
+                    const batchNum = Math.floor(i / ROUTES_PER_BATCH) + 1;
+                    this.log(`[${relativePath}] Batch ${batchNum}: lines ${batchFirstLine + 1}–${chunkEndLine}`);
+                    try {
+                        rawEndpoints.push(...await this.extractEndpointsFromChunk(
+                            filePath, relativePath, chunk,
+                            contextStart + 1,  // pass absolute line offset to the LLM
+                            framework, model, true
+                        ));
+                    } catch (err) {
+                        this.log(`[${relativePath}] Batch ${batchNum} failed: ${err}`);
+                    }
+                }
             }
         }
 
-        // Deduplicate by method+path (keep first occurrence)
+        // ── Post-processing ─────────────────────────────────────────────────────
+
+        const normalized: APIEndpoint[] = rawEndpoints.map((ep: any) => {
+            let epPath: string = (ep.path || '').trim();
+            if (!epPath.startsWith('/')) { epPath = '/' + epPath; }
+
+            // 1. Apply router prefix if the path doesn't already include it
+            if (prefix) {
+                const normalizedPrefix = prefix.replace(/\/$/, '');
+                if (!epPath.startsWith(normalizedPrefix + '/') && epPath !== normalizedPrefix) {
+                    epPath = normalizedPrefix + epPath;
+                }
+            }
+
+            // 2. Fill missing line number from decorator map
+            //    Try both prefixed and unprefixed path forms so lookup works regardless
+            //    of whether the LLM included the prefix in its returned path.
+            let lines = ep.lines ?? ep.line ?? null;
+            if (!lines) {
+                const method = (ep.method || 'GET').toUpperCase();
+                // Try un-prefixed path (in-router path as written in decorator)
+                const inRouterPath = (prefix && epPath.startsWith(prefix))
+                    ? epPath.slice(prefix.length) || '/'
+                    : epPath;
+                const lineNum = decoratorLineMap.get(`${method} ${inRouterPath}`);
+                if (lineNum !== undefined) { lines = String(lineNum); }
+            }
+
+            return { ...ep, path: epPath, lines, file: relativePath };
+        });
+
+        // 3. Deduplicate by method+path within this file
         const seen = new Set<string>();
-        const deduped = allEndpoints.filter(ep => {
+        const deduped = normalized.filter(ep => {
             const key = `${(ep.method || '').toUpperCase()}:${ep.path}`;
             if (seen.has(key)) { return false; }
             seen.add(key);
             return true;
         });
 
-        if (deduped.length < allEndpoints.length) {
-            this.log(`[${relativePath}] Deduped ${allEndpoints.length} → ${deduped.length} endpoints`);
+        if (deduped.length < normalized.length) {
+            this.log(`[${relativePath}] Deduped ${normalized.length} → ${deduped.length} endpoints`);
         }
+        this.log(`[${relativePath}] Extracted ${deduped.length} endpoints${prefix ? ` (prefix: ${prefix})` : ''}`);
 
         return deduped;
     }
